@@ -1,10 +1,14 @@
-# docs
+# docs/
 
-> 用途：项目文档体系——架构/DB 参考/安全/技能模型/阶段记录。
+> 项目文档：架构设计、安全模型、API 参考。
 
 ## 内容清单
-- `phase-0-项目初始化.md` … `phase-N-*.md`：每阶段记录（重要决策/问题修复/对标完成度/扩展度，AGENTS.md 永久约定）
-- 架构与参考文档随阶段推进补充（architecture/db-central/db-session/api-details 等，对标 nanoclaw docs/）
+
+- `architecture.md` — 架构设计：实体模型、双 DB 会话、请求流、容器隔离、模块化扩展、自主扩展
+- `security.md` — 安全模型：guard fail-closed、容器沙箱、Web 安全、密钥管理、审批流、已知取舍
+- `api-reference.md` — API 参考：CLI 命令、Web REST API、Agent 对话、测试与构建命令
+- `README.md` — 本文件
 
 ## 修改记录
-- 2026-08-12 创建；phase-0..4 记录追溯补齐。
+
+- 2026-08-19 创建：删除内部开发过程文档，新增 architecture/security/api-reference 三份文档
