@@ -1,15 +1,9 @@
 /**
- * channels/cli.ts —— CLI 通道适配器（内置，socket 通信）
+ * channels/cli.ts ?��?CLI ?��??��??��??�置，socket ?�信�? *
+ * ?�责：net server（Unix socket / Windows named pipe）�?客户端�? JSON �?{text} ?�纯?�本 ?? *       onInbound('local', null, msg)；deliver ??JSON 行�?已�??�客?�端?? * ?�键导出：CLI_DEFAULTS, cliSocketPath
+ * ?��?模�?：socket 路�??��??�身份�?chmod 0600 / pipe ACL）�??��?天槽位语义�??�为多客?�端广播?? * ?�鉴：nanoclaw src/channels/cli.ts
  *
- * 职责：net server（Unix socket / Windows named pipe）；客户端发 JSON 行 {text} 或纯文本 →
- *       onInbound('local', null, msg)；deliver 写 JSON 行给已连接客户端。
- * 关键导出：CLI_DEFAULTS, cliSocketPath
- * 核心模式：socket 路径权限即身份（chmod 0600 / pipe ACL）；单聊天槽位语义简化为多客户端广播。
- * 借鉴：nanoclaw src/channels/cli.ts
- *
- * 修改记录：
- *   2026-08-12 创建（阶段 5）
- *   2026-08-12 修复：win32 teardown 等待管道释放（防旧 server 竞态）
+ * 修改记�?�? *   2026-08-12 ?�建（阶�?5�? *   2026-08-12 修�?：win32 teardown 等�?管�??�放（防??server 竞态�?
  */
 import { createServer, connect, type Server, type Socket } from "node:net";
 import { chmodSync, existsSync, rmSync } from "node:fs";
@@ -21,7 +15,7 @@ import { registerChannelAdapter } from "./channel-registry.js";
 import type { ChannelAdapter, ChannelDefaults, ChannelSetup, OutboundMessage } from "./adapter.js";
 
 export function cliSocketPath(): string {
-  return process.platform === "win32" ? `\\\\.\\pipe\\openclaw-chat-${INSTALL_SLUG}` : join(DATA_DIR, "cli-chat.sock");
+  return process.platform === "win32" ? `\\\\.\\pipe\\OC-chat-${INSTALL_SLUG}` : join(DATA_DIR, "cli-chat.sock");
 }
 
 export const CLI_DEFAULTS: ChannelDefaults = {
@@ -59,8 +53,7 @@ function createCliAdapter(): ChannelAdapter {
             try {
               text = String((JSON.parse(line) as { text?: string }).text ?? line);
             } catch {
-              text = line; // 纯文本兜底
-            }
+              text = line; // 纯�??��?�?            }
             config.onInbound("local", null, {
               id: randomUUID(),
               kind: "chat",
@@ -77,8 +70,7 @@ function createCliAdapter(): ChannelAdapter {
       server.listen(path, () => {
         if (process.platform !== "win32") {
           try {
-            chmodSync(path, 0o600); // socket 权限即身份
-          } catch (err) {
+            chmodSync(path, 0o600); // socket ?��??�身�?          } catch (err) {
             log.warn("cli socket chmod failed", { err });
           }
         }
@@ -94,7 +86,7 @@ function createCliAdapter(): ChannelAdapter {
         if (!server) return resolve();
         server.close(() => resolve());
       });
-      // Windows named pipe 释放异步：等待连接被拒，防下个使用者连到旧 server（测试竞态修复）
+      // Windows named pipe ?�放异步：�?待�??�被?��??��?个使?�者�??�旧 server（�?试�??�修复�?
       if (process.platform === "win32") {
         const deadline = Date.now() + 1000;
         while (Date.now() < deadline) {
