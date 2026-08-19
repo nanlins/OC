@@ -1,16 +1,10 @@
 /**
- * index.ts —— 主机主入口（单进程编排器）
+ * index.ts ?��?主机主入????��?程�??�器�? *
+ * ?�责：严?��??�启?��???+ ?��?优�??��??? *   0 ?�断?�????1 中央 DB+迁移 ??2 ?��??��??��?始�? ??3 主机模�??�动
+ *   ?��??�递轮�?巡�?/CLI ?��?续阶段�? host-lifecycle 注�??�入�? * ?�键导出：main
+ * ?��?不�??��??��??��? + finally 必�?置�??�器（SIGTERM ?�达?��?崩�?）�? * ?�鉴：nanoclaw src/index.ts
  *
- * 职责：严格编号启动序列 + 逆序优雅关停。
- *   0 熔断退避 → 1 中央 DB+迁移 → 2 通道适配器初始化 → 3 主机模块启动
- *   →（投递轮询/巡检/CLI 由后续阶段经 host-lifecycle 注册接入）
- * 关键导出：main
- * 承重不变量：关停逆序 + finally 必重置熔断器（SIGTERM 到达即非崩溃）。
- * 借鉴：nanoclaw src/index.ts
- *
- * 修改记录：
- *   2026-08-12 创建（阶段 0 骨架）
- *   2026-08-12 阶段 2：完整启动编排（DB/迁移/通道/模块/关停）；清理中部 import
+ * 修改记�?�? *   2026-08-12 ?�建（阶�?0 骨架�? *   2026-08-12 ?�段 2：�??�启?��??��?DB/迁移/?��?/模�?/?��?）�?清�?中部 import
  */
 import { mkdirSync } from "node:fs";
 import { basename } from "node:path";
@@ -25,17 +19,10 @@ import { initChannelAdapters, teardownChannelAdapters } from "./channels/channel
 import { wakeContainer } from "./container-runner.js";
 import { cleanupOrphans } from "./container-runtime.js";
 import { routeInbound, setContainerWaker } from "./router.js";
-import "./channels/index.js"; // 副作用 barrel：内置通道自注册（阶段 5 填充）
-import "./providers/index.js"; // 副作用 barrel：provider 容器贡献（密钥 -e 透传，收束期补）
-import "./modules/index.js"; // 副作用 barrel：模块钩子自注册（阶段 6 填充）
-import "./host-sweep.js"; // 副作用：巡检注册到 host-lifecycle（阶段 3）
-import "./delivery.js"; // 副作用：投递轮询注册到 host-lifecycle（阶段 5，P0 修复）
-import "./cli/socket-server.js"; // 副作用：CLI 控制 socket 注册到 host-lifecycle（阶段 7）
-import "./web/server.js"; // 副作用：Web 管理控制台注册到 host-lifecycle（阶段 9）
-
+import "./channels/index.js"; // ?��???barrel：�?置通�??�注?��??�段 5 填�?�?import "./providers/index.js"; // ?��???barrel：provider 容器贡献（�???-e ?��?，收?��?补�?
+import "./modules/index.js"; // ?��???barrel：模?�钩子自注�?（阶�?6 填�?�?import "./host-sweep.js"; // ?��??��?巡�?注�???host-lifecycle（阶�?3�?import "./delivery.js"; // ?��??��??�递轮询注?�到 host-lifecycle（阶�?5，P0 修�?�?import "./cli/socket-server.js"; // ?��??��?CLI ?�制 socket 注�???host-lifecycle（阶�?7�?import "./web/server.js"; // ?��??��?Web 管�??�制?�注?�到 host-lifecycle（阶�?9�?
 export async function main(): Promise<void> {
-  // 0. 熔断退避（运行在 initDb 之前）
-  await enforceStartupBackoff(DATA_DIR);
+  // 0. ?�断?�?��?运�???initDb 之�?�?  await enforceStartupBackoff(DATA_DIR);
 
   let graceful = false;
   try {
@@ -45,16 +32,13 @@ export async function main(): Promise<void> {
     runMigrations(getDb(), [migration001]);
     log.info("central db ready");
 
-    // fix-plan P1：启动清理上一运行遗留的本安装孤儿容器（无活动会话，live 集合为空）
-    try {
+    // fix-plan P1：启?��??��?一运�??��??�本安�?孤儿容器（�?活动会�?，live ?��?为空�?    try {
       cleanupOrphans(new Set());
     } catch (err) {
       log.warn("startup orphan cleanup failed", { err });
     }
 
-    // 2. 通道适配器（instance 戳印接缝：适配器保持实例盲，主机在 onInbound 戳 instance）
-    // fix-plan P1：入站异步统一错误边界——routeInbound 拒绝只记日志，绝不致主机退出
-    await initChannelAdapters((adapter) => ({
+    // 2. ?��??��??��?instance ?�印?��?：适�??��??��?例盲，主?�在 onInbound ??instance�?    // fix-plan P1：入站�?步�?一?�误边�??�—routeInbound ?��??�记?��?，�?不致主机?�??    await initChannelAdapters((adapter) => ({
       onInbound: (platformId, threadId, message) => {
         void routeInbound({
           channelType: adapter.channelType,
@@ -70,34 +54,30 @@ export async function main(): Promise<void> {
         );
       },
       onMetadata: () => {},
-      onAction: () => {}, // interactive 模块阶段 6 接入
+      onAction: () => {}, // interactive 模�??�段 6 ?�入
     }));
 
-    // 2.5 容器唤醒钩子注入路由（阶段 3）
-    setContainerWaker((session) => wakeContainer(session));
+    // 2.5 容器?��??��?注入路由（阶�?3�?    setContainerWaker((session) => wakeContainer(session));
 
-    // 3. 主机模块（host-sweep 经 barrel 注册；投递/CLI 后续阶段）
-    await startHostModules();
+    // 3. 主机模�?（host-sweep �?barrel 注�?；�???CLI ?�续?�段�?    await startHostModules();
 
-    log.info("openclaw host started", { pid: process.pid });
+    log.info("OC host started", { pid: process.pid });
 
     await waitForShutdownSignal();
-    graceful = true; // 仅信号路径视为优雅关停（P0 修复：崩溃路径保留熔断状态）
+    graceful = true; // 仅信?�路径�?为�??�关?��?P0 修�?：崩溃路径�??��??�状?��?
   } finally {
-    // 逆序关停：模块 → 通道 → 孤儿容器清理 → （优雅时）熔断器重置 → DB
+    // ?��??��?：模?????��? ??孤儿容器清�? ??（�??�时）�??�器?�置 ??DB
     try {
       await stopHostModules();
       await teardownChannelAdapters();
-      // fix-plan P1：关停时同步清理本安装遗留容器（会话已停，live 集合为空）
-      try {
+      // fix-plan P1：关?�时?�步清�??��?装�??�容?��?会�?已�?，live ?��?为空�?      try {
         cleanupOrphans(new Set());
       } catch (err) {
         log.warn("shutdown orphan cleanup failed", { err });
       }
     } finally {
-      if (graceful) resetCircuitBreaker(DATA_DIR); // SIGTERM/SIGINT 到达即非崩溃；启动崩溃保留退避
-      closeDb();
-      log.info("openclaw host stopped", { graceful });
+      if (graceful) resetCircuitBreaker(DATA_DIR); // SIGTERM/SIGINT ?�达?��?崩�?；启?�崩溃�??�退??      closeDb();
+      log.info("OC host stopped", { graceful });
     }
   }
 }
