@@ -1,0 +1,33 @@
+#!/usr/bin/env node
+/**
+ * bin/oc —— OpenClaw 管理 CLI 入口（修复 bin 断链，fix-plan）
+ *
+ * 职责：优先运行编译产物 dist/cli/client.js（发布安装后），否则经本地 tsx 直跑源码（开发态）。
+ * 用法：oc groups list / npm run oc -- groups list
+ *
+ * 修改记录：2026-08-14 创建（修复 package.json bin.oc 指向不存在的入口）
+ */
+import { spawnSync } from "node:child_process";
+import { existsSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { dirname, join } from "node:path";
+
+const root = join(dirname(fileURLToPath(import.meta.url)), "..");
+const args = process.argv.slice(2);
+
+let res;
+const compiled = join(root, "dist", "cli", "client.js");
+if (existsSync(compiled)) {
+  res = spawnSync(process.execPath, [compiled, ...args], { stdio: "inherit", cwd: root });
+} else {
+  const tsxCli = join(root, "node_modules", "tsx", "dist", "cli.mjs");
+  if (!existsSync(tsxCli)) {
+    console.error("dependencies missing; run `pnpm install` first");
+    process.exit(1);
+  }
+  res = spawnSync(process.execPath, [tsxCli, join(root, "src", "cli", "client.ts"), ...args], {
+    stdio: "inherit",
+    cwd: root,
+  });
+}
+process.exit(res.status ?? 1);
