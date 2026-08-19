@@ -1,11 +1,6 @@
 /**
- * container-runner.test.ts —— 容器运行器集成测试（注入 spawner，不真起 Docker）
- *
- * 职责：wakeContainer 去重/永不抛/退出清理；killContainer onExit 接力；restart on_wake 语义；
- *       buildMounts 顺序与 RO 嵌套；buildContainerArgs 强化与资源限制。
- * 修改记录：
- *   2026-08-12 创建（阶段 3）
- */
+ * container-runner.test.ts ?��?容器运�??��??��?试�?注入 spawner，�??�起 Docker�? *
+ * ?�责：wakeContainer ?��?/永�????�?��??��?killContainer onExit ?��?；restart on_wake 语�?�? *       buildMounts 顺�?�?RO 嵌�?；buildContainerArgs 强�?与�?源�??��? * 修改记�?�? *   2026-08-12 ?�建（阶�?3�? */
 import { EventEmitter } from "node:events";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { closeDb, createAgentGroup, createSession, initTestDb, runMigrations } from "../../src/db/index.js";
@@ -66,11 +61,11 @@ afterEach(() => {
 describe("container-runner", () => {
   it("wakeContainer spawns once and dedups in-flight + active", async () => {
     const p1 = wakeContainer(session);
-    const p2 = wakeContainer(session); // in-flight 去重
+    const p2 = wakeContainer(session); // in-flight ?��?
     await Promise.all([p1, p2]);
     expect(spawned).toHaveLength(1);
     expect(isContainerRunning(session.id)).toBe(true);
-    await wakeContainer(session); // active 去重
+    await wakeContainer(session); // active ?��?
     expect(spawned).toHaveLength(1);
     expect(getActiveContainerCount()).toBe(1);
   });
@@ -99,7 +94,7 @@ describe("container-runner", () => {
     await wakeContainer(session);
     let relayed = false;
     killContainer(session, { onExit: () => void (relayed = true) });
-    expect(relayed).toBe(false); // 进程未退出不触发
+    expect(relayed).toBe(false); // 进�??�退?��?触�?
     procs[0]!.emit("close", null, "SIGTERM");
     expect(relayed).toBe(true);
   });
@@ -123,7 +118,7 @@ describe("container-runner", () => {
     const first = procs[0]!;
     const n = restartAgentGroupContainers(session.agent_group_id, "test", "config changed; restart");
     expect(n).toBe(1);
-    first.emit("close", null, "SIGTERM"); // 旧容器死透 → onExit 唤醒
+    first.emit("close", null, "SIGTERM"); // ?�容?�死????onExit ?��?
     await new Promise((r) => setTimeout(r, 10));
     expect(spawned).toHaveLength(2);
     const rows = withInboundDb(inboundDbPath(session.agent_group_id, session.id), (db) =>
@@ -133,7 +128,7 @@ describe("container-runner", () => {
   });
 
   it("containerNameFor yields label-safe names", () => {
-    expect(containerNameFor(session)).toMatch(/^openclaw-[0-9a-f]{8}-\d+$/);
+    expect(containerNameFor(session)).toMatch(/^OC-[0-9a-f]{8}-\d+$/);
   });
 });
 
@@ -157,7 +152,7 @@ describe("buildContainerArgs secret injection (fix-plan P1)", () => {
     const args = buildContainerArgs([], "c1", baseCfg, { OPENAI_API_KEY: "sk-secret" }, "/tmp/env-c1");
     expect(args).toContain("--env-file");
     expect(args[args.indexOf("--env-file") + 1]).toBe("/tmp/env-c1");
-    // 密钥不得以 -e KEY=VALUE 形式出现在 argv
+    // 密钥不�?�?-e KEY=VALUE 形�??�现??argv
     expect(args.some((a) => a.includes("sk-secret"))).toBe(false);
     expect(args).not.toContain("-e");
   });
