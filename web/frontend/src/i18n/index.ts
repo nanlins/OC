@@ -1,13 +1,8 @@
 /**
- * i18n/index.ts —— 前端三语资源与切换（zh/en/ja）
- *
- * 职责：t(key) 翻译函数 + locale 三语循环切换（localStorage 持久化）。
- * 关键导出：useT, setLocale, getLocale, cycleLocale, Locale
- * 承重不变量：三语 key 集合一致（i18n.test.ts lint 强制）；缺 key 回退 key 本身。
- *
- * 修改记录：
- *   2026-08-13 创建（阶段 11）
- *   2026-08-13 阶段 14：全量抽取页面文案，扩展 zh/en/ja 三语 + cycleLocale
+ * i18n/index.ts ?��??�端三语资�?与�??��?zh/en/ja�? *
+ * ?�责：t(key) 翻�??�数 + locale 三语循环?�换（localStorage ?��??��??? * ?�键导出：useT, setLocale, getLocale, cycleLocale, Locale
+ * ?��?不�??��?三语 key ?��?一?��?i18n.test.ts lint 强制）�?�?key ?�退 key ?�身?? *
+ * 修改记�?�? *   2026-08-13 ?�建（阶�?11�? *   2026-08-13 ?�段 14：全?�抽?�页?��?案�??��? zh/en/ja 三语 + cycleLocale
  */
 import { useSyncExternalStore } from "react";
 
@@ -17,44 +12,44 @@ export const LOCALES: readonly Locale[] = ["zh", "en", "ja"];
 
 const DICT: Record<Locale, Record<string, string>> = {
   zh: {
-    "nav.dashboard": "总览",
-    "nav.sessions": "会话",
-    "nav.groups": "Agent 群组",
-    "nav.wirings": "接线",
+    "nav.dashboard": "?��?",
+    "nav.sessions": "会�?",
+    "nav.groups": "Agent 群�?",
+    "nav.wirings": "?�线",
     "nav.approvals": "审批",
     "nav.audit": "审计",
-    "dashboard.title": "OpenClaw 管理控制台",
-    "dashboard.groups": "Agent 群组",
-    "dashboard.sessions": "活跃会话",
-    "dashboard.pending": "待审批",
-    "dashboard.events": "事件直播",
-    "approvals.approve": "批准",
-    "approvals.reject": "拒绝",
+    "dashboard.title": "OC 管�??�制??,
+    "dashboard.groups": "Agent 群�?",
+    "dashboard.sessions": "活�?会�?",
+    "dashboard.pending": "待审??,
+    "dashboard.events": "事件?�播",
+    "approvals.approve": "?��?",
+    "approvals.reject": "?��?",
     "sessions.messages": "消息",
-    "common.loading": "加载中…",
-    "common.error": "错误",
+    "common.loading": "?�载中�?,
+    "common.error": "?�误",
     "col.id": "ID",
-    "col.agent_group": "Agent 群组",
-    "col.status": "状态",
-    "col.container_status": "容器状态",
-    "col.last_active": "最后活跃",
-    "col.messaging_group": "消息群组",
-    "col.engage_mode": "触发模式",
-    "col.sender_scope": "发送者范围",
-    "col.session_mode": "会话模式",
-    "col.priority": "优先级",
-    "col.action": "动作",
-    "col.title": "标题",
-    "col.created_at": "创建时间",
-    "col.actor": "执行者",
-    "col.decision": "决定",
-    "col.reason": "原因",
-    "col.name": "名称",
-    "col.folder": "目录",
+    "col.agent_group": "Agent 群�?",
+    "col.status": "?��?,
+    "col.container_status": "容器?��?,
+    "col.last_active": "?�?�活�?,
+    "col.messaging_group": "消息群�?",
+    "col.engage_mode": "触�?模�?",
+    "col.sender_scope": "?�送者�???,
+    "col.session_mode": "会�?模�?",
+    "col.priority": "优�?�?,
+    "col.action": "?��?",
+    "col.title": "?��?",
+    "col.created_at": "?�建?�间",
+    "col.actor": "?��???,
+    "col.decision": "?��?",
+    "col.reason": "?��?",
+    "col.name": "?�称",
+    "col.folder": "?��?",
     "col.agent_provider": "Provider",
-    "wirings.select_messaging_group": "-- 选择消息群组 --",
-    "wirings.select_agent_group": "-- 选择 Agent 群组 --",
-    "wirings.create": "创建接线",
+    "wirings.select_messaging_group": "-- ?�择消息群�? --",
+    "wirings.select_agent_group": "-- ?�择 Agent 群�? --",
+    "wirings.create": "?�建?�线",
   },
   en: {
     "nav.dashboard": "Dashboard",
@@ -63,7 +58,7 @@ const DICT: Record<Locale, Record<string, string>> = {
     "nav.wirings": "Wirings",
     "nav.approvals": "Approvals",
     "nav.audit": "Audit",
-    "dashboard.title": "OpenClaw Console",
+    "dashboard.title": "OC Console",
     "dashboard.groups": "Agent Groups",
     "dashboard.sessions": "Active Sessions",
     "dashboard.pending": "Pending Approvals",
@@ -71,7 +66,7 @@ const DICT: Record<Locale, Record<string, string>> = {
     "approvals.approve": "Approve",
     "approvals.reject": "Reject",
     "sessions.messages": "Messages",
-    "common.loading": "Loading…",
+    "common.loading": "Loading??,
     "common.error": "Error",
     "col.id": "ID",
     "col.agent_group": "Agent Group",
@@ -97,48 +92,48 @@ const DICT: Record<Locale, Record<string, string>> = {
     "wirings.create": "Create Wiring",
   },
   ja: {
-    "nav.dashboard": "ダッシュボード",
-    "nav.sessions": "セッション",
-    "nav.groups": "Agent グループ",
-    "nav.wirings": "配線",
-    "nav.approvals": "承認",
-    "nav.audit": "監査",
-    "dashboard.title": "OpenClaw 管理コンソール",
-    "dashboard.groups": "Agent グループ",
-    "dashboard.sessions": "アクティブセッション",
-    "dashboard.pending": "承認待ち",
-    "dashboard.events": "イベントライブ",
-    "approvals.approve": "承認",
-    "approvals.reject": "拒否",
-    "sessions.messages": "メッセージ",
-    "common.loading": "読み込み中…",
-    "common.error": "エラー",
+    "nav.dashboard": "?�?�シ?��??��?",
+    "nav.sessions": "?��??�ョ??,
+    "nav.groups": "Agent ?�ル?��?",
+    "nav.wirings": "?��?",
+    "nav.approvals": "?��?",
+    "nav.audit": "??��",
+    "dashboard.title": "OC 管�??�ン?�ー??,
+    "dashboard.groups": "Agent ?�ル?��?",
+    "dashboard.sessions": "?�ク?�ィ?�セ?�シ?�ン",
+    "dashboard.pending": "?��?待ち",
+    "dashboard.events": "?��??��??�イ??,
+    "approvals.approve": "?��?",
+    "approvals.reject": "?�否",
+    "sessions.messages": "?��??�ー??,
+    "common.loading": "読み込み中�?,
+    "common.error": "?�ラ??,
     "col.id": "ID",
-    "col.agent_group": "Agent グループ",
-    "col.status": "ステータス",
-    "col.container_status": "コンテナ状態",
-    "col.last_active": "最終アクティブ",
-    "col.messaging_group": "メッセージグループ",
-    "col.engage_mode": "トリガーモード",
-    "col.sender_scope": "送信者スコープ",
-    "col.session_mode": "セッションモード",
-    "col.priority": "優先度",
-    "col.action": "アクション",
-    "col.title": "タイトル",
-    "col.created_at": "作成日時",
-    "col.actor": "実行者",
-    "col.decision": "判定",
-    "col.reason": "理由",
-    "col.name": "名前",
-    "col.folder": "フォルダ",
+    "col.agent_group": "Agent ?�ル?��?",
+    "col.status": "?��??�タ??,
+    "col.container_status": "?�ン?��??��?",
+    "col.last_active": "?�終ア?��????",
+    "col.messaging_group": "?��??�ー?�グ?�ー??,
+    "col.engage_mode": "?�リ?�ー?�ー??,
+    "col.sender_scope": "?�信?�ス?�ー??,
+    "col.session_mode": "?��??�ョ?�モ?��?",
+    "col.priority": "?��?�?,
+    "col.action": "?�ク?�ョ??,
+    "col.title": "?�イ?�ル",
+    "col.created_at": "作�??��?",
+    "col.actor": "実�???,
+    "col.decision": "?��?",
+    "col.reason": "?�由",
+    "col.name": "?��?",
+    "col.folder": "?�ォ?��?",
     "col.agent_provider": "Provider",
-    "wirings.select_messaging_group": "-- メッセージグループを選択 --",
-    "wirings.select_agent_group": "-- Agent グループを選択 --",
-    "wirings.create": "配線を作成",
+    "wirings.select_messaging_group": "-- ?��??�ー?�グ?�ー?��??��? --",
+    "wirings.select_agent_group": "-- Agent ?�ル?��??�選??--",
+    "wirings.create": "?��??��???,
   },
 };
 
-let locale: Locale = (localStorage.getItem("openclaw_locale") as Locale) || "zh";
+let locale: Locale = (localStorage.getItem("OC_locale") as Locale) || "zh";
 if (!LOCALES.includes(locale)) locale = "zh";
 const listeners = new Set<() => void>();
 
@@ -148,11 +143,11 @@ export function getLocale(): Locale {
 
 export function setLocale(l: Locale): void {
   locale = l;
-  localStorage.setItem("openclaw_locale", l);
+  localStorage.setItem("OC_locale", l);
   for (const lsn of listeners) lsn();
 }
 
-/** 三语循环：zh → en → ja → zh */
+/** 三语循环：zh ??en ??ja ??zh */
 export function cycleLocale(): Locale {
   const idx = LOCALES.indexOf(locale);
   const next = LOCALES[(idx + 1) % LOCALES.length] as Locale;
@@ -171,7 +166,7 @@ export function useT(): (key: string) => string {
   return (key: string) => DICT[current][key] ?? key;
 }
 
-/** 仅供测试：访问底层字典做 key 一致性 lint */
+/** 仅�?测�?：访?��?层�??��? key 一?��?lint */
 export function __dictForTest(): Record<Locale, Record<string, string>> {
   return DICT;
 }
