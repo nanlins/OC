@@ -1,15 +1,11 @@
 /**
- * modules/mount-security.ts —— 额外挂载安全校验
+ * modules/mount-security.ts ?��?额�??�载安全?��?
  *
- * 职责：白名单（项目根之外，防容器自改规则）+ 默认 blocked patterns + containerPath 注入防御 +
- *       RW 双重条件（挂载显式请求 ∧ 根允许，否则强制只读）。
- * 关键导出：validateAdditionalMounts, MountConfig
- * 核心模式：mtime 缓存但解析错误不缓存（修好即恢复）。
- * 借鉴：nanoclaw src/modules/mount-security/
+ * ?�责：白?��?（项?�根之�?，防容器?�改规�?�? 默认 blocked patterns + containerPath 注入?�御 +
+ *       RW ?��??�件（�?载显式请�????��?许�??��?强制?�读）�? * ?�键导出：validateAdditionalMounts, MountConfig
+ * ?��?模�?：mtime 缓�?但解?��?误�?缓�?（修好即?��?）�? * ?�鉴：nanoclaw src/modules/mount-security/
  *
- * 修改记录：
- *   2026-08-12 创建（阶段 3，提前于阶段 6 因 container-runner 依赖）
- *   2026-08-12 复检修复：realpath 校验并挂载 realpath；容器路径沙箱 /workspace/extra/；blocked 清单扩充；Windows 分隔符归一
+ * 修改记�?�? *   2026-08-12 ?�建（阶�?3，�??��??�段 6 ??container-runner 依�?�? *   2026-08-12 复�?修�?：realpath ?��?并�?�?realpath；容?�路径�?�?/workspace/extra/；blocked 清�??��?；Windows ?��?符�?一
  */
 import { existsSync, readFileSync, realpathSync, statSync } from "node:fs";
 import { resolve } from "node:path";
@@ -19,7 +15,7 @@ import type { VolumeMount } from "../providers/provider-container-registry.js";
 
 export interface MountConfig {
   host: string;
-  /** 相对容器沙箱根的路径；绝对路径/.. 一律拒绝（P1 修复：沙箱到 /workspace/extra/，防遮蔽 RO 挂载） */
+  /** ?�对容器沙箱?��?路�?；�?对路�?.. 一律�?绝�?P1 修�?：�?箱到 /workspace/extra/，防?�蔽 RO ?�载�?*/
   container: string;
   readonly?: boolean;
 }
@@ -33,7 +29,7 @@ const DEFAULT_BLOCKED = [
   ".ssh",
   ".aws",
   ".env",
-  ".config/openclaw",
+  ".config/OC",
   ".local/bin",
   ".gnupg",
   ".netrc",
@@ -51,7 +47,7 @@ const DEFAULT_BLOCKED = [
 let cache: { mtime: number; list: Allowlist } | null = null;
 let allowlistPathOverride: string | null = null;
 
-/** 仅供测试：覆盖白名单路径 */
+/** 仅�?测�?：�??�白?��?路�? */
 export function setMountAllowlistPathForTest(p: string | null): void {
   allowlistPathOverride = p;
   cache = null;
@@ -72,8 +68,7 @@ function loadAllowlist(): Allowlist {
       roots: Array.isArray(parsed.roots) ? parsed.roots : [],
       blockedPatterns: Array.isArray(parsed.blockedPatterns) ? parsed.blockedPatterns : DEFAULT_BLOCKED,
     };
-    cache = { mtime, list }; // 解析成功才缓存
-    return list;
+    cache = { mtime, list }; // �???��??��?�?    return list;
   } catch (err) {
     log.warn("mount allowlist parse error (not cached)", { err });
     return { roots: [], blockedPatterns: DEFAULT_BLOCKED };
@@ -81,15 +76,14 @@ function loadAllowlist(): Allowlist {
 }
 
 function containerPathSafe(p: string): boolean {
-  // P1 修复：容器路径必须是相对路径（沙箱到 /workspace/extra/），
-  // 拒绝对抗形态：绝对路径/.. /冒号 —— 防遮蔽 /workspace/inbound.db 等关键 RO 挂载
+  // P1 修�?：容?�路径�?须是?�对路�?（�?箱到 /workspace/extra/）�?
+  // ?��?对�?形态�?绝对路�?/.. /?�号 ?��??�遮??/workspace/inbound.db 等关??RO ?�载
   if (p.startsWith("/")) return false;
   if (p.includes("..") || p.includes(":") || p.includes("\0")) return false;
   return p.length > 0;
 }
 
-/** 校验配置挂载；不安全的丢弃并告警；RW 不满足双重条件则降级只读。
- *  P1 修复（se-inspector）：realpath 校验并挂载 realpath（符号链接不得绕白名单）。 */
+/** ?��??�置?�载；�?安全?�丢弃并?�警；RW 不满足�??�条件�??�级?�读?? *  P1 修�?（se-inspector）�?realpath ?��?并�?�?realpath（符?�链?��?得�??��??��???*/
 export function validateAdditionalMounts(mounts: MountConfig[]): VolumeMount[] {
   const list = loadAllowlist();
   const out: VolumeMount[] = [];
@@ -100,13 +94,12 @@ export function validateAdditionalMounts(mounts: MountConfig[]): VolumeMount[] {
     }
     let host: string;
     try {
-      host = realpathSync(m.host); // 不存在则抛 → 拒绝
+      host = realpathSync(m.host); // 不�??��??????��?
     } catch {
       log.warn(`mount rejected: host path unresolvable ${m.host}`);
       continue;
     }
-    const norm = host.replace(/\\/g, "/"); // Windows 分隔符归一（P2 修复）
-    const root = list.roots.find((r) => {
+    const norm = host.replace(/\\/g, "/"); // Windows ?��?符�?一（P2 修�?�?    const root = list.roots.find((r) => {
       const rr = resolve(r.path).replace(/\\/g, "/");
       return norm === rr || norm.startsWith(rr + "/");
     });
@@ -118,14 +111,13 @@ export function validateAdditionalMounts(mounts: MountConfig[]): VolumeMount[] {
       log.warn(`mount rejected: blocked pattern ${m.host}`);
       continue;
     }
-    // RW 需"挂载显式请求 ∧ 根允许"，否则强制只读
-    const rw = m.readonly === false && root.allowReadWrite === true;
+    // RW ?�"?�载?��?请�? ???��?�?，否?�强?�只�?    const rw = m.readonly === false && root.allowReadWrite === true;
     out.push({ host, container: `/workspace/extra/${m.container}`, readonly: !rw });
   }
   return out;
 }
 
-/** 仅供测试：清缓存 */
+/** 仅�?测�?：�?缓�? */
 export function clearMountSecurityCacheForTest(): void {
   cache = null;
 }
