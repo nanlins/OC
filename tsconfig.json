@@ -1,0 +1,26 @@
+// tsconfig.json —— 主机 + 测试的 TypeScript 配置
+// 说明：容器侧 Agent Runner 有独立 tsconfig（container/agent-runner/tsconfig.json，Bun 运行时），不在此编译。
+// 修改记录：
+//   2026-08-12 创建（阶段 0）
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "lib": ["ES2022"],
+    "outDir": "dist",
+    "rootDir": ".",
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "noImplicitOverride": true,
+    "forceConsistentCasingInFileNames": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "resolveJsonModule": true,
+    "declaration": false,
+    "sourceMap": true,
+    "types": ["node"]
+  },
+  "include": ["src/**/*.ts", "tests/**/*.ts"],
+  "exclude": ["node_modules", "dist", "container"]
+}
