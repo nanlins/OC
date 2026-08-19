@@ -1,11 +1,7 @@
 /**
- * slack.test.ts —— Slack 适配器集成测试（纯本地 mock，不连外网）
+ * slack.test.ts ?��?Slack ?��??��??��?试�?纯本??mock，�?连�?网�?
  *
- * 职责：deliver chat.postMessage 的 URL/鉴权/body/返回 ts；凭据缺失 factory 返回 null；
- *       hello 握手 + events_api ack + 入站三形态（群/单聊/mention）；断线指数退避重连。
- * 修改记录：
- *   2026-08-13 创建（阶段 10）
- */
+ * ?�责：deliver chat.postMessage ??URL/?��?/body/返�? ts；凭?�缺�?factory 返�? null�? *       hello ?��? + events_api ack + ?��?三形?��?�??��?/mention）�??�线?�数?�?��?连�? * 修改记�?�? *   2026-08-13 ?�建（阶�?10�? */
 import { describe, expect, it, beforeEach, afterEach, vi } from "vitest";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -78,7 +74,7 @@ async function waitFor(cond: () => boolean, timeoutMs = 2000): Promise<void> {
 }
 
 function tempEnvPath(content: string): string {
-  const dir = mkdtempSync(join(tmpdir(), "openclaw-slack-test-"));
+  const dir = mkdtempSync(join(tmpdir(), "OC-slack-test-"));
   const p = join(dir, ".env");
   writeFileSync(p, content, "utf8");
   return p;
@@ -275,12 +271,12 @@ describe("slack adapter", () => {
       expect(sockets).toHaveLength(1);
       sockets[0]!.onclose!();
       await vi.advanceTimersByTimeAsync(999);
-      expect(sockets).toHaveLength(1); // 首次退避 1000ms 未到
+      expect(sockets).toHaveLength(1); // 首次?�??1000ms ?�到
       await vi.advanceTimersByTimeAsync(1);
       expect(sockets).toHaveLength(2);
       sockets[1]!.onclose!();
       await vi.advanceTimersByTimeAsync(1999);
-      expect(sockets).toHaveLength(2); // 二次退避翻倍至 2000ms
+      expect(sockets).toHaveLength(2); // 二次?�?�翻?�至 2000ms
       await vi.advanceTimersByTimeAsync(1);
       expect(sockets).toHaveLength(3);
       await adapter.teardown!();
