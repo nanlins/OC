@@ -1,0 +1,50 @@
+{
+  "name": "openclaw",
+  "version": "0.0.1",
+  "description": "OpenClaw —— 手搓复刻 nanoclaw v2 架构的个人 AI 助手平台：单进程主机编排器 + 每会话隔离容器 + 双 SQLite 会话 DB。基线：nanoclaw v2.1.54（claw开源项目源码/）。",
+  "type": "module",
+  "packageManager": "pnpm@11.1.2",
+  "main": "dist/index.js",
+  "bin": {
+    "oc": "bin/oc"
+  },
+  "scripts": {
+    "build": "tsc",
+    "build:container": "tsx container/build.ts",
+    "build:web": "pnpm --dir web/frontend build",
+    "start": "tsx src/index.ts",
+    "ncl": "tsx src/cli/client.ts",
+    "oc": "tsx src/cli/client.ts",
+    "dev": "tsx src/index.ts",
+    "typecheck": "tsc --noEmit",
+    "format": "prettier --write \"src/**/*.ts\" \"tests/**/*.ts\"",
+    "format:check": "prettier --check \"src/**/*.ts\" \"tests/**/*.ts\"",
+    "lint": "eslint src/ tests/",
+    "test": "vitest run",
+    "test:unit": "vitest run tests/unit",
+    "test:integration": "vitest run tests/integration",
+    "test:e2e": "vitest run tests/e2e"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.35.0",
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/node": "^22.10.0",
+    "eslint": "^9.35.0",
+    "globals": "^15.12.0",
+    "prettier": "^3.8.1",
+    "tsx": "^4.19.0",
+    "typescript": "^5.7.0",
+    "typescript-eslint": "^8.35.0",
+    "vitest": "^4.0.18"
+  },
+  "dependencies": {
+    "@clack/prompts": "^1.2.0",
+    "better-sqlite3": "11.10.0",
+    "cron-parser": "^5.5.0",
+    "kleur": "^4.1.5",
+    "yaml": "^2.9.0"
+  }
+}
