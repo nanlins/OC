@@ -1,7 +1,7 @@
 {
-  "name": "openclaw-agent-runner",
+  "name": "OC-agent-runner",
   "version": "0.0.1",
-  "description": "OpenClaw 容器内 Agent 执行引擎（Bun 运行时，独立包树；不属 pnpm workspace，用 bun install 管理）",
+  "description": "OC 容器??Agent ?��?引�?（Bun 运�??��??��??��?；�?�?pnpm workspace，用 bun install 管�?�?,
   "type": "module",
   "scripts": {
     "typecheck": "tsc --noEmit",
