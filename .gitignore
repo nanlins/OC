@@ -1,0 +1,30 @@
+# .gitignore —— 版本控制排除清单
+# 修改记录：
+#   2026-08-12 创建（阶段 0）
+node_modules/
+dist/
+coverage/
+*.log
+
+# 运行时数据（会话双 DB、中央 DB、心跳、outbox）
+data/
+logs/
+groups/
+
+# 秘密与本地配置
+.env
+.env.local
+
+# 状态文件（熔断器/升级绊线）
+data/circuit-breaker.json
+data/upgrade-state.json
+
+# 编辑器/系统
+.DS_Store
+.idea/
+.vscode/
+.audit/
+.transcripts/
+
+# Web 前端构建产物
+web/dist/
