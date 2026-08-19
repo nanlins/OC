@@ -1,0 +1,19 @@
+{
+  "name": "openclaw-agent-runner",
+  "version": "0.0.1",
+  "description": "OpenClaw 容器内 Agent 执行引擎（Bun 运行时，独立包树；不属 pnpm workspace，用 bun install 管理）",
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "bun test"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.39.0",
+    "@modelcontextprotocol/sdk": "^1.12.0",
+    "openai": "^4.104.0"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.2.0",
+    "typescript": "^5.7.0"
+  }
+}
