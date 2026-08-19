@@ -1,0 +1,22 @@
+{
+  "domain": "refund",
+  "doc": "退款政策",
+  "cases": [
+    { "id": "rf-01", "question": "如何申请退款", "expectedAnswer": "设置页 提交 退款申请" },
+    { "id": "rf-02", "question": "退款多久到账", "expectedAnswer": "三个工作日" },
+    { "id": "rf-03", "question": "退款金额怎么退", "expectedAnswer": "原路退回" },
+    { "id": "rf-04", "question": "在哪里提交退款", "expectedAnswer": "设置页" },
+    { "id": "rf-05", "question": "退款流程需要几天", "expectedAnswer": "三个工作日" },
+    { "id": "at-01", "domain": "attendance", "question": "上下班要打卡吗", "expectedAnswer": "打卡" },
+    { "id": "at-02", "domain": "attendance", "question": "迟到三次怎么处理", "expectedAnswer": "旷工一天" },
+    { "id": "at-03", "domain": "attendance", "question": "请假需要提前多久", "expectedAnswer": "提前一天" },
+    { "id": "at-04", "domain": "attendance", "question": "旷工怎么算", "expectedAnswer": "迟到三次按旷工一天" },
+    { "id": "ex-01", "domain": "expense", "question": "报销需要什么", "expectedAnswer": "发票" },
+    { "id": "ex-02", "domain": "expense", "question": "报销审批链是什么", "expectedAnswer": "直属上级 财务" },
+    { "id": "ex-03", "domain": "expense", "question": "报销上限按什么划分", "expectedAnswer": "职级" },
+    { "id": "ex-04", "domain": "expense", "question": "差旅报销要什么票据", "expectedAnswer": "发票必填" },
+    { "id": "od-01", "domain": "other", "question": "今天天气怎么样", "outOfDomain": true },
+    { "id": "od-02", "domain": "other", "question": "量子计算原理", "outOfDomain": true },
+    { "id": "od-03", "domain": "other", "question": "推荐一部电影", "outOfDomain": true }
+  ]
+}
