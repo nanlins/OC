@@ -1,8 +1,4 @@
-// vitest.config.ts —— 测试运行器配置
-// 说明：只跑 tests/ 下的 Node 侧测试；容器侧 agent-runner 测试用 bun:test，不在此运行（借鉴 nanoclaw 双测试树纪律）。
-// 修改记录：
-//   2026-08-12 创建（阶段 0）
-//   2026-08-12 阶段 2：test.env 注入 OPENCLAW_DATA_DIR 隔离测试数据目录
+// vitest.config.ts ?��?测�?运�??��?�?// 说�?：只�?tests/ 下�? Node 侧�?试�?容器�?agent-runner 测�???bun:test，�??�此运�?（借鉴 nanoclaw ?��?试�?纪�?）�?// 修改记�?�?//   2026-08-12 ?�建（阶�?0�?//   2026-08-12 ?�段 2：test.env 注入 OC_DATA_DIR ?�离测�??�据?��?
 import { defineConfig } from "vitest/config";
 
 export default defineConfig({
@@ -10,9 +6,8 @@ export default defineConfig({
     include: ["tests/**/*.test.ts"],
     exclude: ["node_modules/**", "dist/**", "container/**"],
     testTimeout: 10000,
-    // 测试数据目录与项目 data/ 隔离（config.ts 加载期读取）；WEB_TOKEN 固定供测试鉴权（fix-plan P0 fail-closed）
-    env: {
-      OPENCLAW_DATA_DIR: `${process.env.TEMP ?? "/tmp"}/openclaw-test-data`,
+    // 测�??�据?��?与项??data/ ?�离（config.ts ?�载?�读?��?；WEB_TOKEN ?��?供�?试鉴?��?fix-plan P0 fail-closed�?    env: {
+      OC_DATA_DIR: `${process.env.TEMP ?? "/tmp"}/OC-test-data`,
       WEB_TOKEN: "test-web-token",
     },
   },
