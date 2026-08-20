@@ -1,9 +1,9 @@
-{
-  "name": "OC-console",
+ï»¿{
+  "name": "openclaw-console",
   "version": "0.0.1",
   "private": true,
   "type": "module",
-  "description": "OC Web ç®¡ç??§åˆ¶?°ï?React + Viteï¼?,
+  "description": "OpenClaw Web èâˆ ??æ‰¹ï—?å †?React + Viteåš—?,
   "scripts": {
     "dev": "vite",
     "build": "vite build",

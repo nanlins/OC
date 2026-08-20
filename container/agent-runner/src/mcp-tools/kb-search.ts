@@ -1,8 +1,15 @@
 /**
- * mcp-tools/kb-search.ts ?��?kb_search 工具：群组知识�?检索�?fix-plan：kb_search ?�入 agent�? *
- * ?�责：在容器?��?�?KB ?��?（�?�?/workspace/agent/kb，可�?OC_KB_DIR 注入）�? md/txt ?�件�? *       ?��??��? + CJK bigram/latin ?��? + 覆�??��???+ ?�值�?�?+ 引用溯�?（source）�? * ?��?说�?：agent 运�?于容?�、�?宿主中央 DB ?�离，�? KB 为容?�工作区?��?件�?宿主 memory-kb ?��????�放?��?�? *       �?kb_search ?�为?��?步�??��? in-container 工具；embedding ?��?索在宿主 memory-kb（searchKbVector）�? * ?�键导出：registerKbSearchTool, tokenizeKb, chunkKbText
- * ?��?不�??��??�在 KB ?��??�读?��?resolve ?��?缀?��?）�??�件??深度上�??��?源放大�? *
- * 修改记�?�?026-08-14 ?�建（fix-plan：kb_search ?�入 agent�? */
+ * mcp-tools/kb-search.ts —— kb_search 工具：群组知识库检索（fix-plan：kb_search 接入 agent）
+ *
+ * 职责：在容器内检索 KB 目录（默认 /workspace/agent/kb，可经 OPENCLAW_KB_DIR 注入）的 md/txt 文件；
+ *       递归分块 + CJK bigram/latin 分词 + 覆盖率打分 + 阈值过滤 + 引用溯源（source）。
+ * 架构说明：agent 运行于容器、与宿主中央 DB 隔离，故 KB 为容器工作区内文件（宿主 memory-kb 的镜像/投放点），
+ *       使 kb_search 成为可同步返回的 in-container 工具；embedding 版检索在宿主 memory-kb（searchKbVector）。
+ * 关键导出：registerKbSearchTool, tokenizeKb, chunkKbText
+ * 承重不变量：只在 KB 目录内读取（resolve 后前缀校验）；文件数/深度上限防资源放大。
+ *
+ * 修改记录：2026-08-14 创建（fix-plan：kb_search 接入 agent）
+ */
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join, resolve, relative } from "node:path";
 import { getWorkspace } from "../db/connection.ts";
@@ -15,7 +22,7 @@ const MAX_FILES = 200;
 const MAX_DEPTH = 4;
 const MAX_FILE_CHARS = 200_000;
 
-/** CJK 连续串�? bigram，latin/?��??��?（�?宿主 memory-kb.tokenize 对�?�?*/
+/** CJK 连续串切 bigram，latin/数字整词（与宿主 memory-kb.tokenize 对齐） */
 export function tokenizeKb(s: string): string[] {
   const out: string[] = [];
   for (const m of s.toLowerCase().match(/[a-z0-9]+|[一-鿿\u3040-\u30ff]+/g) ?? []) {
@@ -28,8 +35,8 @@ export function tokenizeKb(s: string): string[] {
   return out;
 }
 
-/** ?��??��?（�??��?符�??�级，�?段�?级�??��?符�? */
-export function chunkKbText(text: string, size = CHUNK_SIZE, overlap = CHUNK_OVERLAP, seps = ["\n\n", "\n", "??, " "]): string[] {
+/** 递归分块（按分隔符优先级，超段降级细分隔符） */
+export function chunkKbText(text: string, size = CHUNK_SIZE, overlap = CHUNK_OVERLAP, seps = ["\n\n", "\n", "。", " "]): string[] {
   const t = text.trim();
   if (!t) return [];
   if (t.length <= size) return [t];
@@ -55,7 +62,7 @@ export function chunkKbText(text: string, size = CHUNK_SIZE, overlap = CHUNK_OVE
 }
 
 export function kbDir(): string {
-  return process.env.OC_KB_DIR ?? join(getWorkspace(), "agent", "kb");
+  return process.env.OPENCLAW_KB_DIR ?? join(getWorkspace(), "agent", "kb");
 }
 
 interface KbChunk {
@@ -65,7 +72,7 @@ interface KbChunk {
   tokens: string[];
 }
 
-/** ?��??��? KB ?��??��? chunk（�?�??��?件数/?��??�件大�?�?*/
+/** 有界遍历 KB 目录收集 chunk（限深/限文件数/限单文件大小） */
 function loadKbChunks(dir: string): KbChunk[] {
   const root = resolve(dir);
   const chunks: KbChunk[] = [];
@@ -81,7 +88,7 @@ function loadKbChunks(dir: string): KbChunk[] {
     for (const e of entries) {
       if (fileCount >= MAX_FILES) return;
       const full = join(d, e.name);
-      // ?�在 KB ?�目录�?（防符号?�接/?�对?�逸�?
+      // 只在 KB 根目录内（防符号链接/相对逃逸）
       if (!resolve(full).startsWith(root)) continue;
       if (e.isDirectory()) {
         walk(full, depth + 1);
@@ -118,7 +125,7 @@ export function registerKbSearchTool(): void {
     {
       name: "kb_search",
       description:
-        "Search the group knowledge base (markdown/text files in the kb directory) and return the most relevant chunks with source citations. Use for factual questions answerable from the knowledge base. Returns empty hits when nothing is relevant ??then say you cannot answer from the KB.",
+        "Search the group knowledge base (markdown/text files in the kb directory) and return the most relevant chunks with source citations. Use for factual questions answerable from the knowledge base. Returns empty hits when nothing is relevant — then say you cannot answer from the KB.",
       parameters: {
         type: "object",
         properties: {
