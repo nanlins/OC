@@ -1,7 +1,6 @@
 # fixtures
 
 > 用途：测试夹具——MockProvider、MockAdapter、内存 DB 帮助函数
-
 ## 内容清单
 - 测试夹具与帮助函数
 
