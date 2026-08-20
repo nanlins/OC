@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * bin/oc —— OpenClaw 管理 CLI 入口（修复 bin 断链，fix-plan）
+ * bin/oc —— OC CLI 入口（修复 bin 断链，fix-plan）
  *
  * 职责：优先运行编译产物 dist/cli/client.js（发布安装后），否则经本地 tsx 直跑源码（开发态）。
  * 用法：oc groups list / npm run oc -- groups list
