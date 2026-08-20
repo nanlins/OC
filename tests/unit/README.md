@@ -14,4 +14,4 @@
 
 ## 修改记录
 - 2026-08-12 创建
-- 2026-08-14 fix-plan：补 i18n-eval/trace-safety/rag-vector 测试
+- 2026-08-14 fix-plan：补i18n-eval/trace-safety/rag-vector 测试
