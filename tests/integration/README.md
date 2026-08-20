@@ -8,7 +8,7 @@
 - `router.test.ts` / `delivery.test.ts` / `host-sweep.test.ts`：路由/投递/巡检测试
 - `container-runner.test.ts`：容器运行器测试（注入 spawner/env-file 密钥）
 - `session-manager.test.ts` / `session-db.test.ts` / `db-v2.test.ts`：会话/DB 测试
-- `modules.test.ts`：模块系统集成测试
+- `modules.test.ts`： 模块系统集成测试
 - `telegram.test.ts` / `discord.test.ts` / `slack.test.ts` / `email.test.ts`：渠道适配器测试
 - `feishu.test.ts` / `dingtalk.test.ts` / `wecom.test.ts` / `webhook-generic.test.ts`：国内平台测试
 - `eval.test.ts`：评估体系集成测试
