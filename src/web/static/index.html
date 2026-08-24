@@ -3,25 +3,25 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>OC 管�??�制??/title>
+  <title>OpenClaw 管理控制台</title>
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
   <header>
-    <h1>OC 管�??�制??/h1>
-    <span id="sse-state" class="badge off">SSE ?��?</span>
+    <h1>OpenClaw 管理控制台</h1>
+    <span id="sse-state" class="badge off">SSE 断开</span>
   </header>
   <main>
     <section>
-      <h2>Agent 群�?</h2>
+      <h2>Agent 群组</h2>
       <table id="groups"><thead><tr><th>id</th><th>name</th><th>folder</th><th>provider</th></tr></thead><tbody></tbody></table>
     </section>
     <section>
-      <h2>会�?</h2>
+      <h2>会话</h2>
       <table id="sessions"><thead><tr><th>id</th><th>agent_group</th><th>status</th><th>container</th><th>last_active</th></tr></thead><tbody></tbody></table>
     </section>
     <section>
-      <h2>待审??/h2>
+      <h2>待审批</h2>
       <table id="approvals"><thead><tr><th>id</th><th>action</th><th>title</th><th></th><th></th></tr></thead><tbody></tbody></table>
     </section>
     <section>
@@ -29,7 +29,7 @@
       <table id="audit"><thead><tr><th>action</th><th>actor</th><th>decision</th><th>reason</th></tr></thead><tbody></tbody></table>
     </section>
     <section>
-      <h2>事件?�播</h2>
+      <h2>事件直播</h2>
       <ul id="events"></ul>
     </section>
   </main>
