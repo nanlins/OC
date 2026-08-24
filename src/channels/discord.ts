@@ -1,9 +1,16 @@
 /**
- * channels/discord.ts ?��?Discord ?��??��??��?Gateway WebSocket + REST ?��?�? *
- * ?�责：Gateway v10 IDENTIFY/心跳/MESSAGE_CREATE ?��?（guild/dm?�thread ?��?）�?
- *       REST /channels/<id>/messages ?��?；�??�退?��?连�???IP 封�?，基线�?语�?）�? * ?�键导出：createDiscordAdapter, registerDiscordChannel
- * ?��?不�??��?mention 以平??mention_users ?��?；thread 类�? channel�?1/12）�? threadId?? * ?�鉴：nanoclaw channels ?�支 discord 形�? *
- * 修改记�?�? *   2026-08-13 ?�建（阶�?10�? *   2026-08-13 移除?�使?��? log import（lint 修�?�? */
+ * channels/discord.ts —— Discord 通道适配器（Gateway WebSocket + REST 出站）
+ *
+ * 职责：Gateway v10 IDENTIFY/心跳/MESSAGE_CREATE 分发（guild/dm、thread 判定）；
+ *       REST /channels/<id>/messages 出站；指数退避重连（防 IP 封禁，基线同语义）。
+ * 关键导出：createDiscordAdapter, registerDiscordChannel
+ * 承重不变量：mention 以平台 mention_users 判定；thread 类型 channel（11/12）提 threadId。
+ * 借鉴：nanoclaw channels 分支 discord 形态
+ *
+ * 修改记录：
+ *   2026-08-13 创建（阶段 10）
+ *   2026-08-13 移除未使用的 log import（lint 修复）
+ */
 import { readEnvFile } from "../env.js";
 import { ENV_PATH } from "../config.js";
 import { registerChannelAdapter } from "./channel-registry.js";
@@ -44,13 +51,14 @@ export function createDiscordAdapter(deps: DiscordDeps): ChannelAdapter {
     if (aborted) return;
     ws = wsFactory("wss://gateway.discord.gg/?v=10&encoding=json");
     ws.onopen = () => {
-      reconnectDelay = 1000; // 连接?��??�置?�??      ws?.send(
+      reconnectDelay = 1000; // 连接成功重置退避
+      ws?.send(
         JSON.stringify({
           op: 2,
           d: {
             token: `Bot ${deps.token}`,
             intents: (1 << 0) | (1 << 9) | (1 << 12) | (1 << 15), // GUILDS|GUILD_MESSAGES|DIRECT_MESSAGES|MESSAGE_CONTENT
-            properties: { os: "linux", browser: "OC", device: "OC" },
+            properties: { os: "linux", browser: "openclaw", device: "openclaw" },
           },
         }),
       );
@@ -87,7 +95,8 @@ export function createDiscordAdapter(deps: DiscordDeps): ChannelAdapter {
     ws.onclose = () => {
       if (hbTimer) clearInterval(hbTimer);
       if (aborted) return;
-      // ?�数?�?��???1h（基线�?语�?：防高�??��??�致封�?�?      setTimeout(connect, reconnectDelay);
+      // 指数退避上限 1h（基线同语义：防高频重连招致封禁）
+      setTimeout(connect, reconnectDelay);
       reconnectDelay = Math.min(reconnectDelay * 2, 3_600_000);
     };
   }
