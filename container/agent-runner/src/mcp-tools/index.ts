@@ -1,12 +1,12 @@
-/**
- * mcp-tools/index.ts ¡X¡X ¤u¨ã barrel + MCP stdio server
+ï»¿/**
+ * mcp-tools/index.ts â€”â€” å·¥å…· barrel + MCP stdio server
  *
- * ??¡GbootstrapTools ª`?¥ş³¡¤u¨ã¡FstartMcpServer ¥H @modelcontextprotocol/sdk ¼ÉÅS ListTools/CallTool¡C
- * ???¥X¡GstartMcpServer, bootstrapTools
- * ­É?¡Gnanoclaw container/agent-runner/src/mcp-tools/{index,server}.ts
+ * èŒè´£ï¼šbootstrapTools æ³¨å†Œå…¨éƒ¨å·¥å…·ï¼›startMcpServer ä»¥ @modelcontextprotocol/sdk æš´éœ² ListTools/CallToolã€‚
+ * å…³é”®å¯¼å‡ºï¼šstartMcpServer, bootstrapTools
+ * å€Ÿé‰´ï¼šnanoclaw container/agent-runner/src/mcp-tools/{index,server}.ts
  *
- * ­×§ï??¡G
- *   2026-08-12 ?«Ø¡]?¬q 4¡^¡F­«?­×Î`???§¥
+ * ä¿®æ”¹è®°å½•ï¼š
+ *   2026-08-12 åˆ›å»ºï¼ˆé˜¶æ®µ 4ï¼‰ï¼›é‡å†™ä¿®å¤è½¬ç æŸå
  */
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
@@ -26,7 +26,7 @@ export function bootstrapTools(): void {
 
 export async function startMcpServer(ctx: ToolContext): Promise<void> {
   bootstrapTools();
-  const server = new Server({ name: "OC", version: "0.0.1" }, { capabilities: { tools: {} } });
+  const server = new Server({ name: "openclaw", version: "0.0.1" }, { capabilities: { tools: {} } });
 
   server.setRequestHandler(ListToolsRequestSchema, async () => ({
     tools: allTools().map((t) => ({ name: t.name, description: t.description, inputSchema: t.parameters })),
@@ -41,7 +41,7 @@ export async function startMcpServer(ctx: ToolContext): Promise<void> {
       const result = await tool.handler((req.params.arguments ?? {}) as Record<string, unknown>, ctx);
       return { content: [{ type: "text", text: JSON.stringify(result) }] };
     } catch (err) {
-      // ¤u¨ã??§@? tool result ¦^?¡]?¼Ò«¬¦Û­×Î`¡^¡A¤£?Éİ±`¤¤?
+      // å·¥å…·é”™è¯¯ä½œä¸º tool result å›ä¼ ï¼ˆè®©æ¨¡å‹è‡ªä¿®å¤ï¼‰ï¼Œä¸æŠ›å¼‚å¸¸ä¸­æ–­
       return { content: [{ type: "text", text: JSON.stringify({ error: String(err) }) }], isError: true };
     }
   });
