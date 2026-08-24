@@ -1,8 +1,12 @@
 /**
- * feishu.test.ts ?��?飞书?��??��??��?试�?纯本??mock，�?连�?网�?
+ * feishu.test.ts —— 飞书适配器集成测试（纯本地 mock，不连外网）
  *
- * ?�责：deliver ?��? tenant_access_token ?��? im/v1/messages（URL/?��?/body/返�? message_id）�?
- *       token 缓�?不�?复请求�??�据缺失 factory 返�? null�? *       parseFeishuEvent 三形?��?�?mention/群�? mention/?��?�? ?�目?��?件�???null?? * 修改记�?�? *   2026-08-13 ?�建（阶�?10�? */
+ * 职责：deliver 先取 tenant_access_token 再发 im/v1/messages（URL/鉴权/body/返回 message_id）；
+ *       token 缓存不重复请求；凭据缺失 factory 返回 null；
+ *       parseFeishuEvent 三形态（群+mention/群无 mention/单聊）+ 非目标事件返回 null。
+ * 修改记录：
+ *   2026-08-13 创建（阶段 10）
+ */
 import { describe, expect, it, beforeEach, afterEach } from "vitest";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -40,7 +44,7 @@ function feishuFetch(calls: FetchCall[]): typeof fetch {
 }
 
 function tempEnvPath(content: string): string {
-  const dir = mkdtempSync(join(tmpdir(), "OC-feishu-test-"));
+  const dir = mkdtempSync(join(tmpdir(), "openclaw-feishu-test-"));
   const p = join(dir, ".env");
   writeFileSync(p, content, "utf8");
   return p;
@@ -109,7 +113,7 @@ describe("feishu adapter", () => {
     const adapter = createFeishuAdapter({ appId: "cli_a1", appSecret: "s3cret", fetchImpl: feishuFetch(calls) });
     await adapter.deliver("oc_g1", null, { kind: "chat", content: "one" });
     await adapter.deliver("oc_g1", null, { kind: "chat", content: "two" });
-    expect(calls).toHaveLength(3); // 第�?次�??��??��? token
+    expect(calls).toHaveLength(3); // 第二次投递不再取 token
     expect(calls.filter((c) => c.url.includes("tenant_access_token"))).toHaveLength(1);
   });
 
@@ -133,7 +137,7 @@ describe("feishu adapter", () => {
 
   it("parseFeishuEvent parses group message with mention", () => {
     const parsed = parseFeishuEvent(
-      receiveEvent("group", [{ key: "@_user_1", name: "小助??, id: { open_id: "ou_bot", app_id: "cli_a1" } }]),
+      receiveEvent("group", [{ key: "@_user_1", name: "小助手", id: { open_id: "ou_bot", app_id: "cli_a1" } }]),
     );
     expect(parsed).not.toBeNull();
     expect(parsed!).toMatchObject({
