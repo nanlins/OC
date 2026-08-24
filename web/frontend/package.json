@@ -3,7 +3,7 @@
   "version": "0.0.1",
   "private": true,
   "type": "module",
-  "description": "OpenClaw Web 蝞∠??批?堆?React + Vite嚗?,
+  "description": "OC Web 管理控制台（React + Vite）",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
