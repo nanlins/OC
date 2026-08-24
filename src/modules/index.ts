@@ -20,6 +20,10 @@ import "./memory-kb.js";
 import "./observability.js";
 import "./mount-security.js";
 import "./quota.js";
+import "./long-term-memory.js";
+import "./session-summarizer.js";
+import "./notifications.js";
+import "./rich-media.js";
 
 export {};
 
