@@ -1,13 +1,21 @@
 /**
- * container-runner.ts ?��?容器运�??��?spawn Docker + ?�载 + ?��? + ?�命?��?跟踪
+ * container-runner.ts —— 容器运行器：spawn Docker + 挂载 + 唤醒 + 生命周期跟踪
  *
- * ?�责：wakeContainer（永不�?/布�?返�?/in-flight ?��?）、spawnContainer ?�步?? *       buildMounts（顺序即语�?）、hardeningArgs?�killContainer(onExit ?��?)?? * ?�键导出：wakeContainer, killContainer, isContainerRunning, getActiveContainerCount,
+ * 职责：wakeContainer（永不抛/布尔返回/in-flight 去重）、spawnContainer 十步、
+ *       buildMounts（顺序即语义）、hardeningArgs、killContainer(onExit 接力)。
+ * 关键导出：wakeContainer, killContainer, isContainerRunning, getActiveContainerCount,
  *           buildMounts, buildContainerArgs, hardeningArgs, containerNameFor, VolumeMount
  *
- * ?��?不�??��?
- *   - wakeContainer 永�??��?true=?��?，false=?�态失败�?host-sweep ?��?）�?调用?�零?�御�??�? *   - in-flight Promise Map ?��?步�?建�????二次 spawn（�?容器?��?复�?�? *   - spawn ?��??�孤?��?跳�?件�??��? sweep ?��???mtime 秒�??�容?��?�? *   - --init ?�可?��?--entrypoint 绕�??��? tini ??SIGTERM 会被 PID 1 丢�?）�? * ?�鉴：nanoclaw src/container-runner.ts
+ * 承重不变量：
+ *   - wakeContainer 永不抛：true=成功，false=瞬态失败（host-sweep 重试）；调用方零防御代码；
+ *   - in-flight Promise Map 防异步构建窗口内二次 spawn（双容器双回复）；
+ *   - spawn 前删除孤儿心跳文件（否则 sweep 用陈旧 mtime 秒杀新容器）；
+ *   - --init 非可选（--entrypoint 绕过镜像 tini 时 SIGTERM 会被 PID 1 丢弃）。
+ * 借鉴：nanoclaw src/container-runner.ts
  *
- * 修改记�?�? *   2026-08-12 ?�建（阶�?3�? *   2026-08-12 复�?修�?�?-shm-size ?�条件�??��?pids-limit floor+finite ?��?
+ * 修改记录：
+ *   2026-08-12 创建（阶段 3）
+ *   2026-08-12 复检修复：--shm-size 无条件附加；pids-limit floor+finite 校验
  */
 import { spawn as defaultSpawn, type ChildProcess } from "node:child_process";
 import { rmSync, writeFileSync } from "node:fs";
@@ -62,7 +70,7 @@ interface ActiveContainer {
 const activeContainers = new Map<string, ActiveContainer>();
 const wakePromises = new Map<string, Promise<boolean>>();
 
-/** ?�注??spawner（�?试用�?*/
+/** 可注入 spawner（测试用） */
 type Spawner = (bin: string, args: string[]) => ChildProcess;
 let spawner: Spawner = defaultSpawn;
 export function setContainerSpawnerForTest(fn: Spawner): void {
@@ -76,7 +84,7 @@ export function resetContainerSpawnerForTest(): void {
 
 export function containerNameFor(session: Session): string {
   const slug = session.agent_group_id.slice(0, 8);
-  return `OC-${slug}-${Date.now()}`;
+  return `openclaw-${slug}-${Date.now()}`;
 }
 
 export function isContainerRunning(sessionId: string): boolean {
@@ -87,7 +95,7 @@ export function getActiveContainerCount(): number {
   return activeContainers.size;
 }
 
-// ---- ?�载?�建（顺序即语�?，借鉴 nanoclaw buildMounts�?----
+// ---- 挂载构建（顺序即语义，借鉴 nanoclaw buildMounts） ----
 
 export function buildMounts(
   session: Session,
@@ -104,8 +112,10 @@ export function buildMounts(
     { host: join(groupDir, "container.json"), container: "/workspace/agent/container.json", readonly: true },
     { host: join(groupDir, "CLAUDE.md"), container: "/workspace/agent/CLAUDE.md", readonly: true },
   ];
-  // 额�??�载�?mount-security ?��?（白?��??�项?�根之�?�?  for (const m of validateAdditionalMounts(config.mounts)) mounts.push(m);
-  // provider 贡献?�载?�??  for (const m of provider.mounts) mounts.push(m);
+  // 额外挂载经 mount-security 校验（白名单在项目根之外）
+  for (const m of validateAdditionalMounts(config.mounts)) mounts.push(m);
+  // provider 贡献挂载最后
+  for (const m of provider.mounts) mounts.push(m);
   return mounts;
 }
 
@@ -121,34 +131,37 @@ export function buildContainerArgs(
   envFilePath?: string | null,
 ): string[] {
   const args: string[] = ["run", "--rm", "--name", name, "--label", CONTAINER_INSTALL_LABEL];
-  // 资�??�制：空??不�??�数=不�??��?保护存�?工�?负载�?  const cpu = config.cpuLimit ?? CONTAINER_CPU_LIMIT;
+  // 资源限制：空值=不加参数=不限制（保护存量工作负载）
+  const cpu = config.cpuLimit ?? CONTAINER_CPU_LIMIT;
   const mem = config.memoryLimit ?? CONTAINER_MEMORY_LIMIT;
   const pids = config.pidsLimit ?? CONTAINER_PIDS_LIMIT;
   if (cpu) args.push("--cpus", cpu);
   if (mem) args.push("--memory", mem);
-  args.push("--shm-size=1g"); // ?�条件�??��?P2 修�?：Docker 默认 64m 会�?默短?��?
-  const pidsNum = Math.floor(Number(pids)); // P2 修�?：�??�数不�?（对齐基�?floor�?  if (Number.isFinite(pidsNum) && pidsNum > 0) args.push("--pids-limit", String(pidsNum));
+  args.push("--shm-size=1g"); // 无条件附加（P2 修复：Docker 默认 64m 会静默短写）
+  const pidsNum = Math.floor(Number(pids)); // P2 修复：非整数不传（对齐基线 floor）
+  if (Number.isFinite(pidsNum) && pidsNum > 0) args.push("--pids-limit", String(pidsNum));
   args.push(...hardeningArgs());
   args.push(...(EGRESS_LOCKDOWN ? egressNetworkArgs() : hostGatewayArgs()));
   for (const m of mounts) {
     args.push(...(m.readonly ? readonlyMountArgs(m.host, m.container) : readwriteMountArgs(m.host, m.container)));
   }
-  // fix-plan P1：�??��??��? --env-file�?600 临时?�件）注?��??��??�现??docker run argv（ps ?��?）�?
-  // ?��?件时?�退 -e（�?�??��??�场?��???  if (envFilePath) {
+  // fix-plan P1：密钥优先经 --env-file（0600 临时文件）注入，避免出现在 docker run argv（ps 可见）；
+  // 无文件时回退 -e（测试/无密钥场景）。
+  if (envFilePath) {
     args.push("--env-file", envFilePath);
   } else {
     for (const [k, v] of Object.entries(env)) args.push("-e", `${k}=${v}`);
   }
-  args.push("--entrypoint", "bash", CONTAINER_IMAGE, "-c", "exec bun run /app/src/index.ts"); // exec 保�?信号?��?
+  args.push("--entrypoint", "bash", CONTAINER_IMAGE, "-c", "exec bun run /app/src/index.ts"); // exec 保证信号透传
   return args;
 }
 
-// ---- ?��? / spawn ----
+// ---- 唤醒 / spawn ----
 
 export async function wakeContainer(session: Session): Promise<boolean> {
   if (activeContainers.has(session.id)) return true;
   const inflight = wakePromises.get(session.id);
-  if (inflight) return inflight; // ?��? spawn
+  if (inflight) return inflight; // 防双 spawn
   const p = spawnContainer(session).finally(() => wakePromises.delete(session.id));
   wakePromises.set(session.id, p);
   return p;
@@ -159,7 +172,8 @@ async function spawnContainer(session: Session): Promise<boolean> {
     const group = getAgentGroup(session.agent_group_id);
     if (!group) return false;
 
-    // ?�口封�?：建立失败�?�?spawn（fail-fast�?    try {
+    // 出口封锁：建立失败拒绝 spawn（fail-fast）
+    try {
       ensureEgressNetwork();
     } catch (err) {
       if (err instanceof EgressLockdownError) {
@@ -169,10 +183,10 @@ async function spawnContainer(session: Session): Promise<boolean> {
       throw err;
     }
 
-    const config = materializeContainerJson(group); // DB?��?件�?对象贯穿?�续
+    const config = materializeContainerJson(group); // DB→文件，对象贯穿后续
     initGroupFilesystem(group, { provider: config.provider });
 
-    // fix-plan：宿主�?容器 KB ?�步?�—�?群�? KB（�?=群�? folder，�??� "kb"）物?�到群�? kb/ ?��?（容??kb_search 读�?处�?
+    // fix-plan：宿主→容器 KB 同步——把群组 KB（名=群组 folder，回退 "kb"）物化到群组 kb/ 目录（容器 kb_search 读取处）
     try {
       const { exportKbToDir } = await import("./modules/memory-kb.js");
       const kbDir = join(resolveGroupFolderPath(group.folder), "kb");
@@ -183,7 +197,8 @@ async function spawnContainer(session: Session): Promise<boolean> {
       log.warn("kb sync failed", { err });
     }
 
-    // ?�段 6：spawn ?�刷??destinations ?�影（a2a 路由�?+ 容器?��? ACL�?    try {
+    // 阶段 6：spawn 时刷新 destinations 投影（a2a 路由表 + 容器可见 ACL）
+    try {
       const { writeDestinations } = await import("./modules/agent-to-agent.js");
       writeDestinations(session);
     } catch (err) {
@@ -200,7 +215,7 @@ async function spawnContainer(session: Session): Promise<boolean> {
     const mounts = buildMounts(session, config, provider);
     const name = containerNameFor(session);
     if (!CONTAINER_NAME_RE.test(name)) return false;
-    // fix-plan P1：provider 密钥?�入 0600 临时?�件�?--env-file 注入（�?�?argv）�?容器?�?�时清�?
+    // fix-plan P1：provider 密钥写入 0600 临时文件经 --env-file 注入（不进 argv），容器退出时清理
     let envFilePath: string | null = null;
     const envEntries = Object.entries(provider.env);
     if (envEntries.length > 0) {
@@ -214,18 +229,19 @@ async function spawnContainer(session: Session): Promise<boolean> {
     }
     const args = buildContainerArgs(mounts, name, config, provider.env, envFilePath);
 
-    // ?�除孤儿心跳?�件（否??sweep ?��???mtime 秒�??�容?��?
+    // 删除孤儿心跳文件（否则 sweep 用陈旧 mtime 秒杀新容器）
     try {
       rmSync(heartbeatPath(session.agent_group_id, session.id), { force: true });
     } catch {
-      /* ?��? */
+      /* 吞掉 */
     }
 
     const proc = spawner(CONTAINER_RUNTIME_BIN, args);
     const entry: ActiveContainer = { name, proc, onExit: [] };
     if (envFilePath) {
       const envFile = envFilePath;
-      entry.onExit.push(() => rmSync(envFile, { force: true })); // fix-plan P1：容?�退?�即?��??��?�?    }
+      entry.onExit.push(() => rmSync(envFile, { force: true })); // fix-plan P1：容器退出即删密钥文件
+    }
     activeContainers.set(session.id, entry);
     markContainerRunning(session);
 
@@ -257,13 +273,13 @@ async function spawnContainer(session: Session): Promise<boolean> {
     });
     return true;
   } catch (err) {
-    // 永�??��??�态失败交 sweep ?��?
+    // 永不抛：瞬态失败交 sweep 重试
     log.error("spawnContainer failed (transient)", { err });
     return false;
   }
 }
 
-/** kill + onExit ?��?（�?调在进�??�?��?触�?，�?证旧容器死透�?起新容器�?*/
+/** kill + onExit 回调（回调在进程退出后触发，保证旧容器死透才起新容器） */
 export function killContainer(session: Session, opts?: { onExit?: () => void }): void {
   const entry = activeContainers.get(session.id);
   if (!entry) {
