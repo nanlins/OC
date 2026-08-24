@@ -1,0 +1,5 @@
+{
+  "apt": ["git", "curl", "wget", "jq", "ripgrep", "fd-find", "tree", "unzip", "ca-certificates"],
+  "npm": [],
+  "pip": []
+}
