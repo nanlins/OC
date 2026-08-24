@@ -3,7 +3,7 @@
   "version": "0.0.1",
   "description": "OC — 从零复刻 nanoclaw v2 架构的个人 AI 助手平台：单进程主机编排器 + 每会话隔离容器 + 双 SQLite 会话 DB。基线：nanoclaw v2.1.54（claw开源项目源码）",
   "type": "module",
-  "packageManager": "pnpm@11.1.2",
+  "packageManager": "pnpm@11.23.0",
   "main": "dist/index.js",
   "bin": {
     "oc": "bin/oc"
@@ -13,7 +13,8 @@
     "build:container": "tsx container/build.ts",
     "build:web": "pnpm --dir web/frontend build",
     "start": "tsx src/index.ts",
-    "ncl": "tsx src/cli/client.ts",
+    "chat": "tsx scripts/chat.ts",
+    "demo-setup": "tsx scripts/demo-setup.ts"
     "oc": "tsx src/cli/client.ts",
     "dev": "tsx src/index.ts",
     "typecheck": "tsc --noEmit",

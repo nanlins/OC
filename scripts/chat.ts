@@ -1,64 +1,62 @@
 /**
- * scripts/chat.ts —— 经 CLI 通道（命名管道）与已接线 agent 对话
+ * scripts/chat.ts —— OC 聊天客户端
  *
- * 职责：连接 cliSocketPath() 命名管道 → 发 {text} → 打印回复行；首条回复后静默一段时间退出。
- * 关键导出：无（CLI 脚本）
- * 用法：pnpm exec tsx scripts/chat.ts <message...>
- * 前置：主机运行中，且目标 agent 已接线到 cli 通道（messaging_group + wiring）。
- * 借鉴：nanoclaw scripts/chat.ts（静默退出/硬超时语义）
- *
- * 修改记录：2026-08-13 创建（收束期端到端实测用）
+ * 职责：连接 CLI chat socket，发送消息，接收流式回复。类似终端聊天。
+ * 用法：tsx scripts/chat.ts
+ * 修改记录：2026-08-24 创建
  */
-import net from "node:net";
-import { cliSocketPath } from "../src/channels/cli.js";
+import { connect } from "node:net";
+import { createInterface } from "node:readline";
+import { join } from "node:path";
+import { createHash } from "node:crypto";
+import { DATA_DIR } from "../src/config.js";
 
-const SILENCE_MS = 3000; // 首条回复后静默多久退出
-const HARD_TIMEOUT_MS = 90_000; // 硬超时（容器冷启动可能较久）
+const INSTALL_SLUG = createHash("sha1").update(process.cwd()).digest("hex").slice(0, 8);
+const CHAT_PATH =
+  process.platform === "win32"
+    ? `\\\\.\\pipe\\openclaw-chat-${INSTALL_SLUG}`
+    : join(DATA_DIR, "cli-chat.sock");
 
-const text = process.argv.slice(2).join(" ");
-if (!text) {
-  console.error("usage: tsx scripts/chat.ts <message...>");
-  process.exit(1);
-}
-
-const sock = net.connect(cliSocketPath());
+const socket = connect(CHAT_PATH);
 let buf = "";
-let sawReply = false;
-let silenceTimer: NodeJS.Timeout | null = null;
 
-function scheduleExit(): void {
-  if (silenceTimer) clearTimeout(silenceTimer);
-  silenceTimer = setTimeout(() => {
-    sock.end();
-    process.exit(0);
-  }, SILENCE_MS);
-}
-
-sock.on("connect", () => {
-  sock.write(JSON.stringify({ text }) + "\n");
+socket.on("connect", () => {
+  console.log("[OC] 已连接。输入消息后回车发送，Ctrl+C 退出。\n");
 });
-sock.on("data", (chunk) => {
+
+socket.on("data", (chunk) => {
   buf += chunk.toString();
   let idx;
   while ((idx = buf.indexOf("\n")) >= 0) {
-    const line = buf.slice(0, idx).trim();
+    const line = buf.slice(0, idx);
     buf = buf.slice(idx + 1);
-    if (!line) continue;
     try {
-      const m = JSON.parse(line) as { text?: string; kind?: string };
-      console.log(`[${m.kind ?? "chat"}] ${m.text ?? line}`);
+      const msg = JSON.parse(line) as { text?: string; kind?: string };
+      if (msg.text) process.stdout.write(msg.text);
+      if (msg.kind === "end") process.stdout.write("\n\n> ");
     } catch {
-      console.log(`[raw] ${line}`);
+      process.stdout.write(line);
     }
-    sawReply = true;
-    scheduleExit();
   }
 });
-sock.on("error", (err) => {
-  console.error(`cli pipe error: ${(err as Error).message}（主机是否运行？路径 ${cliSocketPath()}）`);
-  process.exit(2);
+
+socket.on("error", (err) => {
+  console.error("连接失败:", err.message);
+  process.exit(1);
 });
-setTimeout(() => {
-  if (!sawReply) console.error("(no reply within hard timeout)");
-  process.exit(sawReply ? 0 : 3);
-}, HARD_TIMEOUT_MS);
+
+socket.on("close", () => {
+  console.log("\n[OC] 连接断开");
+  process.exit(0);
+});
+
+const rl = createInterface({ input: process.stdin, output: process.stdout });
+rl.on("line", (line) => {
+  if (!line.trim()) return;
+  socket.write(JSON.stringify({ text: line }) + "\n");
+});
+
+rl.on("SIGINT", () => {
+  socket.destroy();
+  process.exit(0);
+});
