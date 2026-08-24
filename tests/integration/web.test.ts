@@ -1,6 +1,9 @@
 /**
- * web.test.ts ?��?Web 管�??�制?��?试�?REST ?�影 + 审批?��? + SSE�? *
- * 修改记�?�? *   2026-08-13 ?�建（阶�?9�? */
+ * web.test.ts —— Web 管理控制台测试（REST 投影 + 审批动作 + SSE）
+ *
+ * 修改记录：
+ *   2026-08-13 创建（阶段 9）
+ */
 import { describe, expect, it, beforeEach, afterEach } from "vitest";
 import {
   closeDb,
@@ -19,7 +22,7 @@ void stopWebServer;
 import { publishWebEvent } from "../../src/web/events.js";
 
 let port: number;
-// fix-plan P0：WEB_TOKEN fail-closed，�?试�? vitest.config 注入 test-web-token
+// fix-plan P0：WEB_TOKEN fail-closed，测试经 vitest.config 注入 test-web-token
 const AUTH = { authorization: "Bearer test-web-token" };
 
 beforeEach(async () => {
@@ -77,17 +80,18 @@ describe("web api", () => {
     const res = await fetch(`http://127.0.0.1:${port}/`);
     expect(res.status).toBe(200);
     const html = await res.text();
-    expect(html).toContain("OC 管�??�制??);
+    expect(html).toContain("OpenClaw 管理控制台");
   });
 
-  it("build:web ??React dist preferred and hashed assets served (fix-plan P2 regression)", async () => {
+  it("build:web — React dist preferred and hashed assets served (fix-plan P2 regression)", async () => {
     const distIndex = resolvePath(PROJECT_ROOT, "web", "frontend", "dist", "index.html");
-    if (!existsSync(distIndex)) return; // ?��?建�?跳�?（CI ??build:web ?��?�?    // ?�态根应�???React dist
+    if (!existsSync(distIndex)) return; // 未构建则跳过（CI 先 build:web 再测）
+    // 静态根应指向 React dist
     expect(resolveStaticDir()).toBe(resolvePath(PROJECT_ROOT, "web", "frontend", "dist"));
-    // / 应为 React ?�口
+    // / 应为 React 入口
     const home = await fetch(`http://127.0.0.1:${port}/`);
     expect(home.status).toBe(200);
-    // dist/assets 下�? .js 应可?�务�?MIME �?��
+    // dist/assets 下的 .js 应可服务且 MIME 正确
     const assetsDir = resolvePath(PROJECT_ROOT, "web", "frontend", "dist", "assets");
     const js = readdirSync(assetsDir).find((f) => f.endsWith(".js"));
     expect(js).toBeDefined();
@@ -104,12 +108,13 @@ describe("web api", () => {
   });
 
   it("traces endpoint rejects path traversal (fix-plan P0 regression)", async () => {
-    // 编�??��? ..%2F �??�?../，�?须被?��?400）�?不�?读�? traces ?��?之�?
+    // 编码后的 ..%2F 解码为 ../，必须被拒（400），不得读取 traces 目录之外
     for (const id of ["..%2F..%2Fpackage", "..%2Fv2.db", "a%2F..%2Fb", "%2e%2e%2fsecret"]) {
       const res = await fetch(`http://127.0.0.1:${port}/api/traces/${id}`, { headers: AUTH });
       expect(res.status).toBe(400);
     }
-    // ?��? id（�?存在）�?返�? 200 + 空数�?    const ok = await fetch(`http://127.0.0.1:${port}/api/traces/some-valid-session`, { headers: AUTH });
+    // 合法 id（不存在）应返回 200 + 空数组
+    const ok = await fetch(`http://127.0.0.1:${port}/api/traces/some-valid-session`, { headers: AUTH });
     expect(ok.status).toBe(200);
     expect(await ok.json()).toEqual([]);
   });
@@ -131,7 +136,7 @@ describe("web api", () => {
   });
 
   it("oversized POST body returns 413 (fix-plan P1 regression)", async () => {
-    const big = "x".repeat(1024 * 1024 + 1024); // > 1MB 上�?
+    const big = "x".repeat(1024 * 1024 + 1024); // > 1MB 上限
     const res = await fetch(`http://127.0.0.1:${port}/api/wirings`, {
       method: "POST",
       headers: { "content-type": "application/json", ...AUTH },
@@ -163,7 +168,8 @@ describe("web api", () => {
     const res = await fetch(`http://127.0.0.1:${port}/events`, { signal: controller.signal, headers: AUTH });
     expect(res.status).toBe(200);
     await stopWebServer();
-    // 连接应被?�务端�?止�?done ??reject(terminated) ?�为终止形�?    const reader = res.body?.getReader();
+    // 连接应被服务端终止：done 或 reject(terminated) 均为终止形态
+    const reader = res.body?.getReader();
     let terminated = false;
     try {
       for (let i = 0; i < 10 && !terminated; i++) {
@@ -171,11 +177,11 @@ describe("web api", () => {
         terminated = next.done;
       }
     } catch {
-      terminated = true; // other side closed = ?�务端已终止连接
+      terminated = true; // other side closed = 服务端已终止连接
     }
     expect(terminated).toBe(true);
     controller.abort();
-    // ?�启�?afterEach stop 幂�?
+    // 重启供 afterEach stop 幂等
     port = await startWebServer(0);
   });
 });
