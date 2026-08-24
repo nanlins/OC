@@ -1,10 +1,13 @@
 /**
- * setup/runner.ts ?��??�态�?�?? + 步骤注�??��?
+ * setup/runner.ts —— 状态块解析 + 步骤注册分发
  *
- * ?�责：parseStatusStream �?? L2 ?��?registerStep/runStep ?��?�?-step <name>）�? * ?�键导出：parseStatusStream, registerStep, runStep, listSteps
- * ?�鉴：nanoclaw setup/lib/runner.ts（StatusStream �??形态�?
+ * 职责：parseStatusStream 解析 L2 块；registerStep/runStep 分发（--step <name>）。
+ * 关键导出：parseStatusStream, registerStep, runStep, listSteps
+ * 借鉴：nanoclaw setup/lib/runner.ts（StatusStream 解析形态）
  *
- * 修改记�?�? *   2026-08-13 ?�建（阶�?8�? */
+ * 修改记录：
+ *   2026-08-13 创建（阶段 8）
+ */
 import { STATUS_END } from "./status.js";
 
 export interface StatusBlock {
@@ -17,7 +20,7 @@ export function parseStatusStream(text: string): StatusBlock[] {
   const lines = text.split(/\r?\n/);
   let current: StatusBlock | null = null;
   for (const line of lines) {
-    const begin = /^=== OC SETUP: (.+) ===$/.exec(line);
+    const begin = /^=== OPENCLAW SETUP: (.+) ===$/.exec(line);
     if (begin) {
       current = { type: begin[1] ?? "", kv: {} };
       blocks.push(current);
