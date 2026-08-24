@@ -7,7 +7,7 @@
  * 修改记录：2026-08-24 创建
  */
 import { createAgentGroup, listAgentGroups } from "../src/db/agent-groups.js";
-import { createMessagingGroup, createWiring, getMessagingGroup } from "../src/db/messaging-groups.js";
+import { createMessagingGroup, createWiring } from "../src/db/messaging-groups.js";
 import { ensureContainerConfig, updateContainerConfig } from "../src/db/container-configs.js";
 import { initDb, closeDb, getDb, hasTable } from "../src/db/connection.js";
 import { runMigrations } from "../src/db/migrations/index.js";
@@ -31,7 +31,9 @@ updateContainerConfig(groupId, { model: "deepseek-chat" });
 console.log(`[setup] agent group: ${groupId} (${DEMO_NAME})`);
 
 // 创建 CLI 消息群组（幂等——唯一键 channel_type+platform_id+instance）
-let mg = getMessagingGroup("cli-demo");
+let mg = getDb()
+  .prepare("SELECT * FROM messaging_groups WHERE channel_type = ? AND platform_id = ?")
+  .get("cli", "cli-demo") as { id: string } | undefined;
 if (!mg) {
   mg = createMessagingGroup({
     channelType: "cli",
