@@ -1,23 +1,27 @@
 /**
- * guard/guard-actions.ts ?��??��??��??��?（�??��??��??��?
+ * guard/guard-actions.ts —— 特权动作目录（品牌化动作值）
  *
- * ?�责：defineGuardedAction ?�造带?��???GuardedAction；�??�即?��?；WeakSet 运�??��?底�? * ?�键导出：defineGuardedAction, isGuardedAction, listGuardedActions, GuardedAction, GuardedActionSpec
- * ?��?模�?：�???{action, decide} 对象?��?不�?编�?也�?不�?运�??��?fail-closed）�?
- *           ?��???grant ?��??��??�询?�带?�而�??��?（拼?�是编�??�误）�? * ?�鉴：nanoclaw src/guard/guard-actions.ts
+ * 职责：defineGuardedAction 铸造带品牌的 GuardedAction；重名即抛错；WeakSet 运行时兜底。
+ * 关键导出：defineGuardedAction, isGuardedAction, listGuardedActions, GuardedAction, GuardedActionSpec
+ * 核心模式：手写 {action, decide} 对象既过不了编译也过不了运行时（fail-closed）；
+ *           名字是 grant 匹配键；咨询携带值而非名字（拼错是编译错误）。
+ * 借鉴：nanoclaw src/guard/guard-actions.ts
  *
- * 修改记�?�? *   2026-08-12 ?�建（阶�?3�? */
+ * 修改记录：
+ *   2026-08-12 创建（阶段 3）
+ */
 import type { GuardDecision, GuardInput } from "./types.js";
 
 export interface GuardedActionSpec {
-  /** ?��? allow ?��? */
+  /** 唯一 allow 来源 */
   decide: (input: GuardInput) => GuardDecision;
-  /** hold 经哪�?pending_approvals.action �?�� */
+  /** hold 经哪个 pending_approvals.action 解决 */
   grantActionName?: string;
-  /** grant 与请求�?额�?领�?绑�?（�??��??��?次�??��?跑�? */
+  /** grant 与请求的额外领域绑定（结构检查每次回放重跑） */
   grantCoversRequest?: (grantPayload: unknown, input: GuardInput) => boolean;
 }
 
-const BRAND: unique symbol = Symbol("OC.guarded-action");
+const BRAND: unique symbol = Symbol("openclaw.guarded-action");
 
 export interface GuardedAction {
   readonly [BRAND]: true;
@@ -36,7 +40,7 @@ export function defineGuardedAction(name: string, spec: GuardedActionSpec): Guar
   return action;
 }
 
-/** 运�??��?底�??��?对象过�?�?*/
+/** 运行时兜底：手写对象过不了 */
 export function isGuardedAction(v: unknown): v is GuardedAction {
   return typeof v === "object" && v !== null && known.has(v);
 }
@@ -45,7 +49,7 @@ export function listGuardedActions(): readonly GuardedAction[] {
   return all;
 }
 
-/** 仅�?测�? */
+/** 仅供测试 */
 export function clearGuardedActionsForTest(): void {
   all.length = 0;
 }
