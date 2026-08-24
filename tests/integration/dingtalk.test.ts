@@ -1,7 +1,11 @@
 /**
- * dingtalk.test.ts ?��??��??��??��??��?试�?纯本??mock，�?连�?网�?
+ * dingtalk.test.ts —— 钉钉适配器集成测试（纯本地 mock，不连外网）
  *
- * ?�责：deliver webhook POST 签�? URL（timestamp+sign，HmacSHA256 复�??��?）�? body；errcode ??0 ?��?�? *       ?�据缺失 factory 返�? null；parseDingtalkEvent 三形?��?�?mention/群�? mention/?��?�? ?�形返�? null?? * 修改记�?�? *   2026-08-13 ?�建（阶�?10�? */
+ * 职责：deliver webhook POST 签名 URL（timestamp+sign，HmacSHA256 复算校验）与 body；errcode 非 0 抛错；
+ *       凭据缺失 factory 返回 null；parseDingtalkEvent 三形态（群+mention/群无 mention/单聊）+ 畸形返回 null。
+ * 修改记录：
+ *   2026-08-13 创建（阶段 10）
+ */
 import { describe, expect, it, beforeEach, afterEach } from "vitest";
 import { createHmac } from "node:crypto";
 import { mkdtempSync, writeFileSync } from "node:fs";
@@ -30,7 +34,7 @@ function jsonResponse(body: unknown, status = 200): Response {
 }
 
 function tempEnvPath(content: string): string {
-  const dir = mkdtempSync(join(tmpdir(), "OC-dingtalk-test-"));
+  const dir = mkdtempSync(join(tmpdir(), "openclaw-dingtalk-test-"));
   const p = join(dir, ".env");
   writeFileSync(p, content, "utf8");
   return p;
@@ -66,7 +70,7 @@ describe("dingtalk adapter", () => {
     }) as typeof fetch;
     const adapter = createDingtalkAdapter({ webhookUrl: WEBHOOK, secret: SECRET, fetchImpl });
     const id = await adapter.deliver("cidXXX", null, { kind: "chat", content: "hi dingtalk" });
-    expect(id).toBeUndefined(); // webhook ?��??�平?��???id
+    expect(id).toBeUndefined(); // webhook 响应无平台消息 id
     expect(calls).toHaveLength(1);
     const url = new URL(calls[0]!.url);
     expect(`${url.origin}${url.pathname}`).toBe("https://oapi.dingtalk.com/robot/send");
@@ -77,7 +81,8 @@ describe("dingtalk adapter", () => {
     expect(sign).toBeTruthy();
     expect(Number(ts)).toBeGreaterThan(0);
     const expected = createHmac("sha256", SECRET).update(`${ts}\n${SECRET}`).digest("base64");
-    expect(sign).toBe(expected); // URL �???��? HmacSHA256 base64 一??    expect(JSON.parse(String(calls[0]!.init?.body))).toEqual({
+    expect(sign).toBe(expected); // URL 解码后与 HmacSHA256 base64 一致
+    expect(JSON.parse(String(calls[0]!.init?.body))).toEqual({
       msgtype: "text",
       text: { content: "hi dingtalk" },
     });
@@ -108,22 +113,22 @@ describe("dingtalk adapter", () => {
       {
         conversationId: "cidG",
         conversationType: "2",
-        conversationTitle: "测�?�?,
+        conversationTitle: "测试群",
         senderStaffId: "staff1",
-        senderNick: "张�?",
+        senderNick: "张三",
         msgId: "msg1",
         msgtype: "text",
-        text: { content: "@?�器�??��?下天�? },
+        text: { content: "@机器人 查一下天气" },
         isInAtList: true,
       },
-      "?�器�?,
+      "机器人",
     );
     expect(parsed).not.toBeNull();
     expect(parsed!).toMatchObject({
       platformId: "cidG",
       threadId: null,
       senderId: "dingtalk:staff1",
-      senderName: "张�?",
+      senderName: "张三",
       messageId: "msg1",
       isGroup: true,
       isMention: true,
@@ -137,9 +142,9 @@ describe("dingtalk adapter", () => {
         conversationType: "2",
         senderStaffId: "staff2",
         msgId: "msg2",
-        text: { content: "?��?一?? },
+        text: { content: "闲聊一句" },
       },
-      "?�器�?,
+      "机器人",
     );
     expect(parsed).not.toBeNull();
     expect(parsed!).toMatchObject({ platformId: "cidG", isGroup: true, isMention: false });
