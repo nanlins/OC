@@ -1,10 +1,16 @@
 /**
- * channels/email.ts ?��?Email ?��??��??��?IMAP 轮询?��? + SMTP ?��?�? *
- * ?�责：�?�?IMAP 客户端�?CAPABILITY/LOGIN/SELECT INBOX/UID SEARCH/UID FETCH/UID STORE 子�?，�??�议 + {N} literal）�?
- *       轮询 UNSEEN ??onInbound（platformId=email:<user>?�senderId=email:<from>?�isMention=true）�?
- *       ?��?SMTP 客户端�?EHLO/AUTH LOGIN/MAIL FROM/RCPT TO/DATA，\r\n.\r\n 终止）�?socketFactory 注入?��??? * ?�键导出：createEmailAdapter, registerEmailChannel, MailSocket, SocketFactory
- * ?��?不�??��?UID ?��??��??��?（�?一 UNSEEN ?�表二次轮询不�?复入站�?；SMTP DATA 必须�?\r\n.\r\n 结�??? * ?�鉴：nanoclaw channels ?�支 email 形�? *
- * 修改记�?�? *   2026-08-13 ?�建（阶�?10�? */
+ * channels/email.ts —— Email 通道适配器（IMAP 轮询入站 + SMTP 出站）
+ *
+ * 职责：最小 IMAP 客户端（CAPABILITY/LOGIN/SELECT INBOX/UID SEARCH/UID FETCH/UID STORE 子集，行协议 + {N} literal）；
+ *       轮询 UNSEEN → onInbound（platformId=email:<user>、senderId=email:<from>、isMention=true）；
+ *       最小 SMTP 客户端（EHLO/AUTH LOGIN/MAIL FROM/RCPT TO/DATA，\r\n.\r\n 终止）；socketFactory 注入可测。
+ * 关键导出：createEmailAdapter, registerEmailChannel, MailSocket, SocketFactory
+ * 承重不变量：UID 单调推进去重（同一 UNSEEN 列表二次轮询不重复入站）；SMTP DATA 必须以 \r\n.\r\n 结束。
+ * 借鉴：nanoclaw channels 分支 email 形态
+ *
+ * 修改记录：
+ *   2026-08-13 创建（阶段 10）
+ */
 import { connect as netConnect } from "node:net";
 import { connect as tlsConnect } from "node:tls";
 import { readEnvFile } from "../env.js";
@@ -20,7 +26,7 @@ export interface MailSocket {
   on(event: "data", listener: (chunk: Buffer | string) => void): void;
   on(event: "close", listener: () => void): void;
   on(event: "error", listener: (err: Error) => void): void;
-  /** fix-plan P1：�?�?socket（�? STARTTLS ?�级?�裹）�?测�???socket ?��?此�?�?*/
+  /** fix-plan P1：底层 socket（供 STARTTLS 升级包裹）；测试假 socket 可无此字段 */
   raw?: unknown;
 }
 
@@ -49,7 +55,9 @@ const defaultSocketFactory: SocketFactory = ({ host, port, secure }) => {
 };
 
 /**
- * fix-plan P1（STARTTLS）�??�已建�??��???socket 上�?�?TLS（�?证�?书�?rejectUnauthorized 默认 true）�? * ?�级?��?返�??�裹?��? TLS MailSocket；�?�?socket 缺失?�握?�失败�? reject（�??�方?��?认�?，凭?��?走�??��??? */
+ * fix-plan P1（STARTTLS）：在已建立的明文 socket 上升级 TLS（验证证书，rejectUnauthorized 默认 true）。
+ * 升级成功返回包裹后的 TLS MailSocket；底层 socket 缺失或握手失败则 reject（调用方拒绝认证，凭据不走明文）。
+ */
 function upgradeToTls(socket: MailSocket, host: string): Promise<MailSocket> {
   return new Promise((resolve, reject) => {
     const raw = socket.raw as import("node:net").Socket | undefined;
@@ -315,8 +323,9 @@ export function createEmailAdapter(deps: EmailDeps): ChannelAdapter & { pollOnce
     msg: OutboundMessage,
   ): Promise<string | undefined> {
     const to = platformId.replace(/^email:/, "");
-    const ehloDomain = deps.user.split("@")[1] ?? "OC.local";
-    // fix-plan P1�?65 ?��? TLS；其余端???�?587）�??��??��?必须 STARTTLS ?�级，凭?�只??TLS 上�???    const implicitTls = smtpPort === 465;
+    const ehloDomain = deps.user.split("@")[1] ?? "openclaw.local";
+    // fix-plan P1：465 隐式 TLS；其余端口（如 587）明文连接后必须 STARTTLS 升级，凭据只在 TLS 上发送
+    const implicitTls = smtpPort === 465;
     let socket = socketFactory({ host: smtpHost, port: smtpPort, secure: implicitTls });
     let session = new SmtpSession(socket);
     try {
@@ -327,7 +336,8 @@ export function createEmailAdapter(deps: EmailDeps): ChannelAdapter & { pollOnce
         const advertises = ehlo.lines.some((l) => /\bSTARTTLS\b/i.test(l));
         if (!advertises) throw new Error("smtp: server does not advertise STARTTLS; refusing plaintext auth");
         expectCode(await session.command("STARTTLS"), 220, "STARTTLS");
-        // ?�级 TLS（�?证�?书�?；失败即?��?，�?不退?��??�认�?        const tlsSocket = await upgradeToTls(socket, smtpHost);
+        // 升级 TLS（验证证书）；失败即抛错，绝不退回明文认证
+        const tlsSocket = await upgradeToTls(socket, smtpHost);
         socket = tlsSocket;
         session = new SmtpSession(tlsSocket);
         expectCode(await session.command(`EHLO ${ehloDomain}`), 250, "EHLO over TLS");
