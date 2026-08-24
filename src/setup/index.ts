@@ -1,9 +1,13 @@
 /**
- * setup/index.ts ?��?安�??�导?�口�?-step <name> [args] / --list�? *
- * ?�责：步骤�??�器；步骤即?��??��?跑�??��?三级输出契约 L1 ?��??�方渲�?）�? * ?�键导出：main
- * ?�鉴：nanoclaw setup/index.ts
+ * setup/index.ts —— 安装向导入口（--step <name> [args] / --list）
  *
- * 修改记�?�? *   2026-08-13 ?�建（阶�?8�? */
+ * 职责：步骤分发器；步骤即独立可重跑单元（三级输出契约 L1 由调用方渲染）。
+ * 关键导出：main
+ * 借鉴：nanoclaw setup/index.ts
+ *
+ * 修改记录：
+ *   2026-08-13 创建（阶段 8）
+ */
 import { listSteps, runStep } from "./runner.js";
 import { registerBuiltinSteps } from "./steps.js";
 
@@ -25,7 +29,8 @@ export async function main(argv: string[]): Promise<void> {
 import { basename } from "node:path";
 const entry = process.argv[1] ? basename(process.argv[1]) : "";
 if (entry === "index.ts" || entry === "index.js") {
-  // 仅�?�?setup ?�口运�??�执行�??��?与主??index.ts ?��?：�?件�??�为 index，�? OC_SETUP ?��??��??��?�?  if (process.env.OC_SETUP === "1") {
+  // 仅当以 setup 入口运行时执行（避免与主机 index.ts 冲突：文件名同为 index，靠 OPENCLAW_SETUP 环境变量区分）
+  if (process.env.OPENCLAW_SETUP === "1") {
     main(process.argv.slice(2)).catch((err) => {
       console.error(String(err));
       process.exit(1);
