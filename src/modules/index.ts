@@ -18,6 +18,12 @@ import "./interactive.js";
 import "./self-mod.js";
 import "./memory-kb.js";
 import "./observability.js";
+import "./mount-security.js";
 import "./quota.js";
 
 export {};
+
+/*
+ * 修改记录：
+ *   2026-08-24 补齐未完成清单：添加 mount-security 模块导入
+ */
