@@ -1,12 +1,12 @@
-/**
- * index.ts ¡X¡X Agent Runner ®e¾¹¤J¤f
+ï»¿/**
+ * index.ts â€”â€” Agent Runner å®¹å™¨å…¥å£
  *
- * ??¡G¥[? container.json ¡÷ ???¤â¬[ ¡÷ ¨t?´£¥Üªş? ¡÷ ¤u¨ãª`? ¡÷ provider ¡÷ ??´`?¡C
- * ???¥X¡Gmain
- * ­É?¡Gnanoclaw container/agent-runner/src/index.ts
+ * èŒè´£ï¼šåŠ è½½ container.json â†’ è®°å¿†è„šæ‰‹æ¶ â†’ ç³»ç»Ÿæç¤ºé™„å½• â†’ å·¥å…·æ³¨å†Œ â†’ provider â†’ è½®è¯¢å¾ªç¯ã€‚
+ * å…³é”®å¯¼å‡ºï¼šmain
+ * å€Ÿé‰´ï¼šnanoclaw container/agent-runner/src/index.ts
  *
- * ­×§ï??¡G
- *   2026-08-12 ?«Ø¡]?¬q 4¡^¡F­«?­×Î`???§¥
+ * ä¿®æ”¹è®°å½•ï¼š
+ *   2026-08-12 åˆ›å»ºï¼ˆé˜¶æ®µ 4ï¼‰ï¼›é‡å†™ä¿®å¤è½¬ç æŸå
  */
 import { loadConfig } from "./config.ts";
 import { buildSystemPromptAddendum } from "./destinations.ts";
@@ -28,7 +28,7 @@ export async function main(): Promise<void> {
   bootstrapTools();
 
   const tz = resolveTimezone(config.timezone);
-  // fix-plan P0¡G¤u¨ã¸ô¥Ñ¤W¤U¤åª`¤J¯u? channel/platform/thread¡]«ö§å¦¸¥Ñ provider ?¤J¡^¡A¯Ê¬Ù null
+  // fix-plan P0ï¼šå·¥å…·è·¯ç”±ä¸Šä¸‹æ–‡æ³¨å…¥çœŸå® channel/platform/threadï¼ˆæŒ‰æ‰¹æ¬¡ç”± provider ä¼ å…¥ï¼‰ï¼Œç¼ºçœ null
   const ctxFactory = (routing?: RoutingContext): ToolContext => ({
     routing: routing ?? { platformId: null, channelType: null, threadId: null },
     assistantName: config.assistantName,
@@ -37,9 +37,9 @@ export async function main(): Promise<void> {
 
   const addendum = buildSystemPromptAddendum(config.assistantName);
   const memory = renderMemorySection();
-  // ?¬q 13¡G§Ş¯à«ü¥Oª`¤J¨t?´£¥Ü¡]/app/skills ©Î OC_SKILLS_DIR ª`¤J¡^
-  const skills = renderSkillsSection(loadSkills(process.env.OC_SKILLS_DIR ?? "/app/skills"));
-  // fix-plan P0¡G¥[?¸s? CLAUDE.md ª`¤J¨t?´£¥Ü¡]­×Î`¤W¤U¤å??¡^
+  // é˜¶æ®µ 13ï¼šæŠ€èƒ½æŒ‡ä»¤æ³¨å…¥ç³»ç»Ÿæç¤ºï¼ˆ/app/skills æˆ– OPENCLAW_SKILLS_DIR æ³¨å…¥ï¼‰
+  const skills = renderSkillsSection(loadSkills(process.env.OPENCLAW_SKILLS_DIR ?? "/app/skills"));
+  // fix-plan P0ï¼šåŠ è½½ç¾¤ç»„ CLAUDE.md æ³¨å…¥ç³»ç»Ÿæç¤ºï¼ˆä¿®å¤ä¸Šä¸‹æ–‡æ–­ç‚¹ï¼‰
   const claudeMd = renderClaudeMdSection(loadClaudeMd(getWorkspace()));
   log(
     `agent-runner started: provider=${config.provider} claudemd=${claudeMd.length}B addendum=${addendum.length}B memory=${memory.length}B skills=${skills.length}B`,
@@ -50,7 +50,7 @@ export async function main(): Promise<void> {
     timezone: tz,
     assistantName: config.assistantName,
     maxMessages: config.maxMessagesPerPrompt,
-    // ¸s?«ü¥O¡]CLAUDE.md¡^¸m¤_§Ş¯à/??¤§«e§@?¤H®æ/¦æ?°ò?
+    // ç¾¤ç»„æŒ‡ä»¤ï¼ˆCLAUDE.mdï¼‰ç½®äºæŠ€èƒ½/è®°å¿†ä¹‹å‰ä½œä¸ºäººæ ¼/è¡Œä¸ºåŸºçº¿
     systemPrompt: [claudeMd, addendum, skills, memory].filter(Boolean).join("\n"),
   });
 }
