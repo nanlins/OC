@@ -74,7 +74,17 @@ export function storeSessionSummary(opts: {
       `INSERT INTO session_summaries (id, session_id, agent_group_id, range_start, range_end, summary, message_count, token_estimate, created_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
-    .run(row.id, row.sessionId, row.agentGroupId, row.rangeStart, row.rangeEnd, row.summary, row.messageCount, row.tokenEstimate, row.createdAt);
+    .run(
+      row.id,
+      row.sessionId,
+      row.agentGroupId,
+      row.rangeStart,
+      row.rangeEnd,
+      row.summary,
+      row.messageCount,
+      row.tokenEstimate,
+      row.createdAt,
+    );
   return row;
 }
 

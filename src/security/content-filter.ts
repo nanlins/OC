@@ -26,9 +26,20 @@ const PII_PATTERNS: Array<{ name: string; pattern: RegExp }> = [
 ];
 
 const SENSITIVE_WORDS_CN = [
-  "政治敏感", "反动", "颠覆", "分裂", "独立宣言",
-  "色情", "赌博", "毒品", "枪支", "暴力",
-  "黑客", "攻击", "漏洞利用", "恶意代码",
+  "政治敏感",
+  "反动",
+  "颠覆",
+  "分裂",
+  "独立宣言",
+  "色情",
+  "赌博",
+  "毒品",
+  "枪支",
+  "暴力",
+  "黑客",
+  "攻击",
+  "漏洞利用",
+  "恶意代码",
 ];
 
 export function detectPII(content: string): string[] {

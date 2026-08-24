@@ -7,8 +7,6 @@
  *
  * 修改记录：2026-08-24 创建（补齐未完成清单）
  */
-import { registerCommand } from "../registry.js";
-
 export function registerTasksCommands(): void {
   // tasks list/cancel 已在 resources.ts 中注册，此处预留扩展
 }

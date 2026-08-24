@@ -32,9 +32,9 @@ export function recordDroppedMessage(row: DroppedMessageRow): void {
 }
 
 export function listDroppedMessages(limit = 50): Array<Record<string, unknown>> {
-  return getDb()
-    .prepare("SELECT * FROM unregistered_senders ORDER BY last_seen DESC LIMIT ?")
-    .all(limit) as Array<Record<string, unknown>>;
+  return getDb().prepare("SELECT * FROM unregistered_senders ORDER BY last_seen DESC LIMIT ?").all(limit) as Array<
+    Record<string, unknown>
+  >;
 }
 
 export function getDroppedMessageCount(groupId: string): number {
@@ -47,4 +47,3 @@ export function getDroppedMessageCount(groupId: string): number {
  * 修改记录：
  *   2026-08-24 创建（补齐未完成清单）
  */
-

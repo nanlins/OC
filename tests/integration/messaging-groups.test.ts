@@ -7,12 +7,7 @@
 import { describe, expect, it, beforeEach, afterEach } from "vitest";
 import { setupTestDb, closeTestDb } from "../fixtures/memory-db.js";
 import { createAgentGroup } from "../../src/db/agent-groups.js";
-import {
-  createMessagingGroup,
-  getMessagingGroup,
-  createWiring,
-  listWirings,
-} from "../../src/db/messaging-groups.js";
+import { createMessagingGroup, getMessagingGroup, createWiring, listWirings } from "../../src/db/messaging-groups.js";
 
 beforeEach(() => {
   setupTestDb();
@@ -77,4 +72,3 @@ describe("messaging-groups", () => {
  * 修改记录：
  *   2026-08-24 创建（补齐未完成清单）
  */
-

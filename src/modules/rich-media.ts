@@ -70,7 +70,13 @@ function renderTelegramCard(card: RichCard): RenderResult {
   return {
     content: lines.join("\n"),
     attachments: inlineKeyboard
-      ? [{ name: "keyboard.json", content: JSON.stringify({ inline_keyboard: [inlineKeyboard] }), mime: "application/json" }]
+      ? [
+          {
+            name: "keyboard.json",
+            content: JSON.stringify({ inline_keyboard: [inlineKeyboard] }),
+            mime: "application/json",
+          },
+        ]
       : undefined,
   };
 }
@@ -135,13 +141,13 @@ function renderSlackCard(card: RichCard): RenderResult {
 
 function renderWebCard(card: RichCard): RenderResult {
   const html = [
-    `<div class="card" style="border-left:4px solid ${card.color ?? '#5865f2'};padding:12px;margin:8px 0">`,
+    `<div class="card" style="border-left:4px solid ${card.color ?? "#5865f2"};padding:12px;margin:8px 0">`,
     card.title ? `<h3>${card.title}</h3>` : "",
     card.subtitle ? `<p style="color:#888">${card.subtitle}</p>` : "",
     card.image ? `<img src="${card.image}" style="max-width:100%"/>` : "",
     card.body ? `<p>${card.body}</p>` : "",
     card.buttons
-      ? `<div>${card.buttons.buttons.map((b) => `<button value="${b.value}" style="${b.style === 'danger' ? 'background:red' : b.style === 'primary' ? 'background:#5865f2' : ''}">${b.text}</button>`).join(" ")}</div>`
+      ? `<div>${card.buttons.buttons.map((b) => `<button value="${b.value}" style="${b.style === "danger" ? "background:red" : b.style === "primary" ? "background:#5865f2" : ""}">${b.text}</button>`).join(" ")}</div>`
       : "",
     card.footer ? `<p style="color:#666;font-size:12px">${card.footer}</p>` : "",
     "</div>",
@@ -173,7 +179,11 @@ export function renderButtons(buttons: Button[], platform: Platform): RenderResu
   return renderCard({ title: "", buttons: { buttons } }, platform);
 }
 
-export function renderForm(title: string, fields: Array<{ label: string; value: string }>, platform: Platform): RenderResult {
+export function renderForm(
+  title: string,
+  fields: Array<{ label: string; value: string }>,
+  platform: Platform,
+): RenderResult {
   const body = fields.map((f) => `**${f.label}**: ${f.value}`).join("\n");
   return renderCard({ title, body }, platform);
 }

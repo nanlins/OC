@@ -15,10 +15,8 @@ import { join } from "node:path";
 import { GROUPS_DIR } from "./config.js";
 import { getContainerConfig } from "./db/container-configs.js";
 import type { AgentGroup } from "./types.js";
-import { log } from "./log.js";
 
 const COMPOSED_HEADER = "<!-- 由主机 spawn 时自动生成，勿手动编辑。记忆：memory/。 -->";
-const SHARED_CLAUDE_MD_PATH = "/app/CLAUDE.md";
 
 export function composeGroupClaudeMd(group: AgentGroup): void {
   const groupDir = join(GROUPS_DIR, group.folder);
@@ -59,7 +57,11 @@ export function composeGroupClaudeMd(group: AgentGroup): void {
   if (existsSync(fragmentsDir)) {
     for (const existing of readdirSync(fragmentsDir)) {
       if (!desired.has(existing)) {
-        try { unlinkSync(join(fragmentsDir, existing)); } catch { /* 忽略 */ }
+        try {
+          unlinkSync(join(fragmentsDir, existing));
+        } catch {
+          /* 忽略 */
+        }
       }
     }
   }
@@ -84,21 +86,34 @@ export function composeGroupClaudeMd(group: AgentGroup): void {
   const target = join(groupDir, "CLAUDE.md");
   const tmp = `${target}.tmp-${process.pid}`;
   writeFileSync(tmp, body, "utf-8");
-  try { unlinkSync(target); } catch { /* 不存在 */ }
+  try {
+    unlinkSync(target);
+  } catch {
+    /* 不存在 */
+  }
   writeFileSync(target, body, "utf-8");
-  try { unlinkSync(tmp); } catch { /* 忽略 */ }
+  try {
+    unlinkSync(tmp);
+  } catch {
+    /* 忽略 */
+  }
 }
 
 function writeSymlink(linkPath: string, target: string): void {
   try {
     const current = readFileSync(linkPath, "utf-8");
     if (current === target) return;
-  } catch { /* 不存在 */ }
-  try { unlinkSync(linkPath); } catch { /* 忽略 */ }
+  } catch {
+    /* 不存在 */
+  }
+  try {
+    unlinkSync(linkPath);
+  } catch {
+    /* 忽略 */
+  }
   writeFileSync(linkPath, target, "utf-8");
 }
 /*
  * 修改记录：
  *   2026-08-24 创建（补齐未完成清单）
  */
-

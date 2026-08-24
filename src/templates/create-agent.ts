@@ -29,7 +29,10 @@ export function createAgentFromTemplate(ref: string, opts?: CreateAgentOptions):
 
   const id = randomUUID();
   const name = opts?.name ?? "agent-" + id.slice(0, 8);
-  const folder = name.toLowerCase().replace(/[^a-z0-9_-]/g, "-").slice(0, 64);
+  const folder = name
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]/g, "-")
+    .slice(0, 64);
 
   const groupDir = join(GROUPS_DIR, folder);
   if (existsSync(groupDir)) throw new Error(`group folder already exists: ${folder}`);
@@ -58,4 +61,3 @@ export function createAgentFromTemplate(ref: string, opts?: CreateAgentOptions):
  * 修改记录：
  *   2026-08-24 创建（补齐未完成清单）
  */
-

@@ -9,7 +9,7 @@
  *
  * 修改记录：2026-08-24 创建（阶段 11 五、文档之外可扩展方向）
  */
-import { appendFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, readFileSync, renameSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { DATA_DIR } from "../config.js";
 import { log } from "../log.js";
@@ -81,14 +81,16 @@ export function exportAudit(format: "jsonl" | "csv"): string {
 
   if (format === "csv") {
     const header = "timestamp,actor,action,resource,decision,reason";
-    const rows = lines.map((l) => {
-      try {
-        const e = JSON.parse(l) as AuditEvent;
-        return `${e.timestamp},${e.actor},${e.action},${e.resource},${e.decision},"${e.reason}"`;
-      } catch {
-        return "";
-      }
-    }).filter(Boolean);
+    const rows = lines
+      .map((l) => {
+        try {
+          const e = JSON.parse(l) as AuditEvent;
+          return `${e.timestamp},${e.actor},${e.action},${e.resource},${e.decision},"${e.reason}"`;
+        } catch {
+          return "";
+        }
+      })
+      .filter(Boolean);
     return [header, ...rows].join("\n");
   }
 
@@ -100,10 +102,10 @@ export function rotateAudit(maxSizeMB = 100): void {
   const path = join(AUDIT_DIR, AUDIT_FILE);
   if (!existsSync(path)) return;
 
-  const { size } = require("node:fs").statSync(path);
+  const { size } = statSync(path);
   if (size > maxSizeMB * 1024 * 1024) {
     const ts = new Date().toISOString().replace(/[:.]/g, "-");
-    require("node:fs").renameSync(path, join(AUDIT_DIR, `audit-${ts}.jsonl`));
+    renameSync(path, join(AUDIT_DIR, `audit-${ts}.jsonl`));
     log.info("audit log rotated", { size, ts });
   }
 }

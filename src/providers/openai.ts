@@ -28,5 +28,3 @@ registerProviderContainerConfig("openai", () => {
  * 修改记录：
  *   2026-08-24 补齐未完成清单：移除 ollama 注册（已拆分到 ollama.ts）
  */
-
-

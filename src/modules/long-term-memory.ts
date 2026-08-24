@@ -52,7 +52,11 @@ function ensureMemoryTable(): void {
   `);
 }
 
-export function storeMemory(entry: Omit<MemoryEntry, "id" | "createdAt" | "lastAccessedAt" | "accessCount" | "decayRate"> & { decayRate?: number }): MemoryEntry {
+export function storeMemory(
+  entry: Omit<MemoryEntry, "id" | "createdAt" | "lastAccessedAt" | "accessCount" | "decayRate"> & {
+    decayRate?: number;
+  },
+): MemoryEntry {
   ensureMemoryTable();
   const now = new Date().toISOString();
   const row: MemoryEntry = {
@@ -68,7 +72,19 @@ export function storeMemory(entry: Omit<MemoryEntry, "id" | "createdAt" | "lastA
       `INSERT INTO long_term_memory (id, user_id, agent_group_id, type, key, value, importance, decay_rate, created_at, last_accessed_at, access_count)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
-    .run(row.id, row.userId, row.agentGroupId, row.type, row.key, row.value, row.importance, row.decayRate, row.createdAt, row.lastAccessedAt, row.accessCount);
+    .run(
+      row.id,
+      row.userId,
+      row.agentGroupId,
+      row.type,
+      row.key,
+      row.value,
+      row.importance,
+      row.decayRate,
+      row.createdAt,
+      row.lastAccessedAt,
+      row.accessCount,
+    );
   return row;
 }
 
@@ -117,8 +133,8 @@ export function recallMemory(opts: {
   return rows.sort((a, b) => {
     const ageA = now - new Date(a.lastAccessedAt).getTime();
     const ageB = now - new Date(b.lastAccessedAt).getTime();
-    const decayA = a.importance * Math.exp(-a.decayRate * ageA / DECAY_HALF_LIFE_MS);
-    const decayB = b.importance * Math.exp(-b.decayRate * ageB / DECAY_HALF_LIFE_MS);
+    const decayA = a.importance * Math.exp((-a.decayRate * ageA) / DECAY_HALF_LIFE_MS);
+    const decayB = b.importance * Math.exp((-b.decayRate * ageB) / DECAY_HALF_LIFE_MS);
     return decayB - decayA;
   });
 }
@@ -137,7 +153,9 @@ export function forgetByKey(key: string, userId?: string | null): number {
     sql += " AND user_id = ?";
     params.push(userId);
   }
-  const result = getDb().prepare(sql).run(...params);
+  const result = getDb()
+    .prepare(sql)
+    .run(...params);
   return result.changes;
 }
 

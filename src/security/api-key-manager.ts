@@ -9,7 +9,7 @@
  *
  * 修改记录：2026-08-24 创建（阶段 11 五、文档之外可扩展方向）
  */
-import { randomUUID } from "node:crypto";
+import { randomUUID, createHash } from "node:crypto";
 import { readEnvFile } from "../env.js";
 import { ENV_PATH } from "../config.js";
 
@@ -34,7 +34,6 @@ const keys = new Map<string, KeyEntry>();
 const usage = new Map<string, KeyUsage>();
 
 function hashKey(key: string): string {
-  const { createHash } = require("node:crypto");
   return createHash("sha256").update(key).digest("hex");
 }
 
@@ -58,7 +57,7 @@ export function registerKey(opts: {
   return entry;
 }
 
-export function getKey(provider: string, agentGroupId?: string | null): string | null {
+export function getKey(provider: string, _agentGroupId?: string | null): string | null {
   const envKey = readEnvFile([`${provider.toUpperCase()}_API_KEY`], ENV_PATH);
   const key = envKey[`${provider.toUpperCase()}_API_KEY`];
   return key || null;

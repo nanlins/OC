@@ -33,8 +33,11 @@ export function parseTemplate(dir: string): Template {
   const mcpPath = join(dir, ".mcp.json");
   if (existsSync(mcpPath)) {
     try {
-      mcpServers = (JSON.parse(readFileSync(mcpPath, "utf-8")) as { mcpServers?: Record<string, unknown> }).mcpServers ?? {};
-    } catch { /* 忽略无效 .mcp.json */ }
+      mcpServers =
+        (JSON.parse(readFileSync(mcpPath, "utf-8")) as { mcpServers?: Record<string, unknown> }).mcpServers ?? {};
+    } catch {
+      /* 忽略无效 .mcp.json */
+    }
   }
 
   const instructionsFile = join(dir, "context", "instructions.md");
@@ -55,7 +58,10 @@ export function parseTemplate(dir: string): Template {
 function readContextExtras(contextDir: string): { name: string; content: string }[] {
   if (!existsSync(contextDir)) return [];
   return readdirSync(contextDir, { recursive: true })
-    .filter((f) => (f as string).endsWith(".md") && f !== "instructions.md" && statSync(join(contextDir, f as string)).isFile())
+    .filter(
+      (f) =>
+        (f as string).endsWith(".md") && f !== "instructions.md" && statSync(join(contextDir, f as string)).isFile(),
+    )
     .map((name) => ({ name: name as string, content: readFileSync(join(contextDir, name as string), "utf-8") }));
 }
 
@@ -84,7 +90,10 @@ function parseTaskFile(tasksDir: string, file: string): TemplateTask {
   const frontmatter = lines.slice(1, closing).join("\n");
   const schedule = frontmatter.match(/schedule:\s*(.+)/)?.[1]?.trim();
   if (!schedule) throw new Error(`Template task ${source} schedule is required`);
-  const prompt = lines.slice(closing + 1).join("\n").trim();
+  const prompt = lines
+    .slice(closing + 1)
+    .join("\n")
+    .trim();
   if (!prompt) throw new Error(`Template task ${source} prompt is required`);
   return { name, schedule, prompt, source };
 }
@@ -92,4 +101,3 @@ function parseTaskFile(tasksDir: string, file: string): TemplateTask {
  * 修改记录：
  *   2026-08-24 创建（补齐未完成清单）
  */
-

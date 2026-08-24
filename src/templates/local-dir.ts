@@ -9,7 +9,7 @@
  * 修改记录：2026-08-24 创建（补齐未完成清单）
  */
 import { existsSync, statSync } from "node:fs";
-import { isAbsolute, join, relative, resolve } from "node:path";
+import { isAbsolute, relative, resolve } from "node:path";
 import { TEMPLATES_DIR } from "../config.js";
 
 export function resolveLocalTemplate(ref: string, base: string = TEMPLATES_DIR): string {
@@ -29,4 +29,3 @@ export function resolveLocalTemplate(ref: string, base: string = TEMPLATES_DIR):
  * 修改记录：
  *   2026-08-24 创建（补齐未完成清单）
  */
-

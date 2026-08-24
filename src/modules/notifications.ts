@@ -86,7 +86,21 @@ export function sendNotification(opts: {
       `INSERT INTO notifications (id, user_id, agent_group_id, channel, platform_id, title, body, priority, action, action_payload, created_at, delivered_at, read_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
-    .run(row.id, row.userId, row.agentGroupId, row.channel, row.platformId, row.title, row.body, row.priority, row.action, row.actionPayload, row.createdAt, row.deliveredAt, row.readAt);
+    .run(
+      row.id,
+      row.userId,
+      row.agentGroupId,
+      row.channel,
+      row.platformId,
+      row.title,
+      row.body,
+      row.priority,
+      row.action,
+      row.actionPayload,
+      row.createdAt,
+      row.deliveredAt,
+      row.readAt,
+    );
   log.info("notification sent", { id: row.id, title: row.title, priority: row.priority });
   return row;
 }
@@ -125,9 +139,7 @@ export function notifyOnError(error: string, agentGroupId: string | null): Notif
 
 export function markDelivered(id: string): void {
   ensureNotificationTable();
-  getDb()
-    .prepare("UPDATE notifications SET delivered_at = ? WHERE id = ?")
-    .run(new Date().toISOString(), id);
+  getDb().prepare("UPDATE notifications SET delivered_at = ? WHERE id = ?").run(new Date().toISOString(), id);
 }
 
 export function markRead(id: string): void {
@@ -140,9 +152,7 @@ export function markRead(id: string): void {
 export function listNotifications(userId: string | null, limit: number = 20): Notification[] {
   ensureNotificationTable();
   return getDb()
-    .prepare(
-      "SELECT * FROM notifications WHERE (user_id = ? OR user_id IS NULL) ORDER BY created_at DESC LIMIT ?",
-    )
+    .prepare("SELECT * FROM notifications WHERE (user_id = ? OR user_id IS NULL) ORDER BY created_at DESC LIMIT ?")
     .all(userId, limit) as Notification[];
 }
 

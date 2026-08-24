@@ -88,7 +88,13 @@ export class TokenBudget {
 
   estimateCompress(messageTokens: number[], oldestFirst: boolean = true): CompressResult {
     if (!this.shouldCompress()) {
-      return { compressed: false, messagesRemoved: 0, tokensSaved: 0, remainingMessages: messageTokens.length, remainingTokens: this.usage.total };
+      return {
+        compressed: false,
+        messagesRemoved: 0,
+        tokensSaved: 0,
+        remainingMessages: messageTokens.length,
+        remainingTokens: this.usage.total,
+      };
     }
 
     const target = this.config.maxTokens * 0.5;
@@ -114,7 +120,13 @@ export class TokenBudget {
   }
 
   reset(): void {
-    this.usage = { total: this.config.systemPromptTokens, system: this.config.systemPromptTokens, messages: 0, tools: 0, timestamp: new Date().toISOString() };
+    this.usage = {
+      total: this.config.systemPromptTokens,
+      system: this.config.systemPromptTokens,
+      messages: 0,
+      tools: 0,
+      timestamp: new Date().toISOString(),
+    };
   }
 
   snapshot(): void {
