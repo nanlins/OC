@@ -25,6 +25,7 @@ import { addDocument, exportKbToDir } from "../modules/memory-kb.js";
 import { resolveGroupFolderPath } from "../group-folder.js";
 import { join } from "node:path";
 import { registerEvalResource } from "./eval-resource.js";
+import { registerAllCommands } from "./commands/index.js";
 import { randomUUID } from "node:crypto";
 import type { CallerContext } from "./frame.js";
 import { LocalizedError } from "../i18n/index.js";
@@ -36,6 +37,7 @@ export function registerAllResources(): void {
   if (resourcesRegistered) return;
   resourcesRegistered = true;
   registerEvalResource();
+  registerAllCommands();
   // fix-plan：KB 资源——add 写宿主 memory-kb；sync 物化到群组 kb/ 目录（容器 kb_search 读取）
   registerCommand({
     resource: "kb",
@@ -295,3 +297,8 @@ export function registerAllResources(): void {
     },
   });
 }
+
+/*
+ * 修改记录：
+ *   2026-08-24 补齐未完成清单：集成 registerAllCommands（groups/channels/sessions/tasks/chat/config）
+ */
