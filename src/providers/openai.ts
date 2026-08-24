@@ -24,12 +24,9 @@ registerProviderContainerConfig("openai", () => {
   return { mounts: [], env };
 });
 
-/** ollama 走 OpenAI 兼容协议：通常本地无 key，仅需 base url（OPENAI_BASE_URL 或 OLLAMA_HOST/v1） */
-registerProviderContainerConfig("ollama", () => {
-  const dotenv = readEnvFile(["OPENAI_BASE_URL", "OLLAMA_HOST"], ENV_PATH);
-  const env: Record<string, string> = {};
-  const base =
-    dotenv.OPENAI_BASE_URL || process.env.OPENAI_BASE_URL || (dotenv.OLLAMA_HOST ? `${dotenv.OLLAMA_HOST}/v1` : "");
-  if (base) env.OPENAI_BASE_URL = base;
-  return { mounts: [], env };
-});
+/*
+ * 修改记录：
+ *   2026-08-24 补齐未完成清单：移除 ollama 注册（已拆分到 ollama.ts）
+ */
+
+
