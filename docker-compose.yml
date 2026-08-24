@@ -1,0 +1,60 @@
+# OC Docker Compose 编排
+#
+# 用途：一键启动 OC 主机 + 可选依赖（Redis 缓存、PostgreSQL 外部 DB）。
+# 用法：docker compose up -d
+# 借鉴：Docker Compose 最佳实践（healthcheck 依赖顺序、restart policy）
+#
+# 修改记录：2026-08-24 创建（阶段 11 五、文档之外可扩展方向）
+
+version: "3.9"
+
+services:
+  oc-host:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: oc-host:latest
+    container_name: oc-host
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./data:/app/data
+      - ./groups:/app/groups
+      - ./templates:/app/templates
+      - ./.env:/app/.env:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      - APP_ENV=prod
+      - WEB_PORT=8080
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:8080/health', r => process.exit(r.statusCode === 200 ? 0 : 1))"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    networks:
+      - oc-net
+
+  redis:
+    image: redis:7-alpine
+    container_name: oc-redis
+    restart: unless-stopped
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    networks:
+      - oc-net
+    profiles:
+      - cache
+
+volumes:
+  redis-data:
+
+networks:
+  oc-net:
+    driver: bridge
