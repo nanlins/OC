@@ -1,7 +1,7 @@
 {
   "name": "OC",
   "version": "0.0.1",
-  "description": "OC ?��??��?复刻 nanoclaw v2 ?��??�个�?AI ?��?平台：�?进�?主机编�???+ 每�?话�?离容??+ ??SQLite 会�? DB?�基线�?nanoclaw v2.1.54（claw开源项?��???）�?,
+  "description": "OC — 从零复刻 nanoclaw v2 架构的个人 AI 助手平台：单进程主机编排器 + 每会话隔离容器 + 双 SQLite 会话 DB。基线：nanoclaw v2.1.54（claw开源项目源码）",
   "type": "module",
   "packageManager": "pnpm@11.1.2",
   "main": "dist/index.js",
