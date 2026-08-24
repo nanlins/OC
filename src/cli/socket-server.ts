@@ -1,10 +1,15 @@
 /**
- * cli/socket-server.ts ?��?CLI socket ?�务端�?oc ?�令?�口�? *
- * ?�责：net server（unix socket chmod 0600 / win32 named pipe）�?行�???JSON 帧�?
- *       传�??��??�填??caller={actor:'host'}；dispatch ???��?帧�? * ?�键导出：startCliServer, stopCliServer, cliControlPath, handleCliLine
- * ?��?不�??��?socket 路�??��??�身份�?unix 0600）�?帧�??�带身份?? * ?�鉴：nanoclaw src/cli/socket-server.ts
+ * cli/socket-server.ts —— CLI socket 服务端（oc 命令入口）
  *
- * 修改记�?�? *   2026-08-12 ?�建（阶�?7�? */
+ * 职责：net server（unix socket chmod 0600 / win32 named pipe）；行分隔 JSON 帧；
+ *       传输适配器填充 caller={actor:'host'}；dispatch → 响应帧。
+ * 关键导出：startCliServer, stopCliServer, cliControlPath, handleCliLine
+ * 承重不变量：socket 路径权限即身份（unix 0600）；帧不携带身份。
+ * 借鉴：nanoclaw src/cli/socket-server.ts
+ *
+ * 修改记录：
+ *   2026-08-12 创建（阶段 7）
+ */
 import { createServer, type Server, type Socket } from "node:net";
 import { chmodSync, existsSync, rmSync } from "node:fs";
 import { join } from "node:path";
@@ -19,10 +24,12 @@ let server: Server | null = null;
 let registered = false;
 
 export function cliControlPath(): string {
-  return process.platform === "win32" ? `\\\\.\\pipe\\OC-ctl-${INSTALL_SLUG}` : join(DATA_DIR, "ncl.sock");
+  return process.platform === "win32" ? `\\\\.\\pipe\\openclaw-ctl-${INSTALL_SLUG}` : join(DATA_DIR, "ncl.sock");
 }
 
-/** ?��?帧�??��?测�??�直?��??��??? *  P0 修�?（se-inspector）�?身份带�?传�?，帧??caller 字段被剥离�?帧�??�带身份，�?输适�??�填?��?�? *  actor ?��??�校�?fail-closed??*/
+/** 单行帧处理（测试可直接调用）。
+ *  P0 修复（se-inspector）：身份带外传参，帧内 caller 字段被剥离（帧不携带身份，传输适配器填充）；
+ *  actor 白名单校验 fail-closed。 */
 export async function handleCliLine(line: string, caller: CallerContext = { actor: "host" }): Promise<ResponseFrame> {
   if (!registered) {
     registerAllResources();
@@ -70,7 +77,8 @@ export function startCliServer(): void {
   server.listen(path, () => {
     if (process.platform !== "win32") {
       try {
-        chmodSync(path, 0o600); // socket ?��??�身�?      } catch (err) {
+        chmodSync(path, 0o600); // socket 权限即身份
+      } catch (err) {
         log.warn("cli control socket chmod failed", { err });
       }
     }
