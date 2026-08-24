@@ -1,6 +1,11 @@
 /**
- * email.test.ts ?��?Email ?��??��??��??��?试�?mock socket 行�?议�?不�?外�?�? *
- * ?�责：IMAP LOGIN/FETCH 往返�?{N} literal �?? ??onInbound）�?二次轮询 UNSEEN ?��?�? *       SMTP deliver ?�握?��? DATA \r\n.\r\n 终止序�?；凭?�缺�?factory 返�? null?? * 修改记�?�? *   2026-08-13 ?�建（阶�?10�? */
+ * email.test.ts —— Email 通道适配器集成测试（mock socket 行协议，不连外网）
+ *
+ * 职责：IMAP LOGIN/FETCH 往返（{N} literal 解析 → onInbound）；二次轮询 UNSEEN 去重；
+ *       SMTP deliver 全握手与 DATA \r\n.\r\n 终止序列；凭据缺失 factory 返回 null。
+ * 修改记录：
+ *   2026-08-13 创建（阶段 10）
+ */
 import { describe, expect, it, beforeEach, afterEach } from "vitest";
 import { createEmailAdapter, registerEmailChannel, type MailSocket } from "../../src/channels/email.js";
 import {
@@ -118,7 +123,7 @@ describe("email adapter", () => {
     const socket = new FakeMailSocket(imapHandler(7), "* OK IMAP4rev1 ready\r\n");
     const adapter = createEmailAdapter({
       imapHost: "imap.test",
-      user: "bot@OC.dev",
+      user: "bot@openclaw.dev",
       pass: "pw",
       socketFactory: () => socket,
     });
@@ -127,7 +132,7 @@ describe("email adapter", () => {
     await adapter.pollOnce();
     expect(inbound).toHaveLength(1);
     const first = inbound[0]!;
-    expect(first.platformId).toBe("email:bot@OC.dev");
+    expect(first.platformId).toBe("email:bot@openclaw.dev");
     expect(first.threadId).toBeNull();
     expect(first.message.senderId).toBe("email:alice@example.com");
     expect(first.message.senderName).toBe("Alice");
@@ -136,7 +141,7 @@ describe("email adapter", () => {
     expect(first.message.content).toContain("hi from email");
     const cmds = socket.written.map((w) => w.replace(/\r\n$/, ""));
     expect(cmds.some((c) => c.endsWith("CAPABILITY"))).toBe(true);
-    expect(cmds.some((c) => c.includes('LOGIN "bot@OC.dev" "pw"'))).toBe(true);
+    expect(cmds.some((c) => c.includes('LOGIN "bot@openclaw.dev" "pw"'))).toBe(true);
     expect(cmds.some((c) => c.endsWith("SELECT INBOX"))).toBe(true);
     expect(cmds.some((c) => c.includes("UID FETCH 7"))).toBe(true);
     await adapter.teardown?.();
@@ -146,7 +151,7 @@ describe("email adapter", () => {
     const sockets: FakeMailSocket[] = [];
     const adapter = createEmailAdapter({
       imapHost: "imap.test",
-      user: "bot@OC.dev",
+      user: "bot@openclaw.dev",
       pass: "pw",
       socketFactory: () => {
         const s = new FakeMailSocket(imapHandler(7), "* OK ready\r\n");
@@ -169,35 +174,36 @@ describe("email adapter", () => {
     const adapter = createEmailAdapter({
       imapHost: "imap.test",
       smtpHost: "smtp.test",
-      smtpPort: 465, // fix-plan P1�?65 ?��? TLS，�??� STARTTLS
-      user: "bot@OC.dev",
+      smtpPort: 465, // fix-plan P1：465 隐式 TLS，无需 STARTTLS
+      user: "bot@openclaw.dev",
       pass: "pw",
       socketFactory: () => socket,
     });
     await adapter.deliver("email:bob@example.com", null, { kind: "chat", content: "reply to you" });
     const joined = socket.written.join("");
-    expect(joined).toContain("MAIL FROM:<bot@OC.dev>");
+    expect(joined).toContain("MAIL FROM:<bot@openclaw.dev>");
     expect(joined).toContain("RCPT TO:<bob@example.com>");
-    expect(joined).toContain(Buffer.from("bot@OC.dev").toString("base64"));
+    expect(joined).toContain(Buffer.from("bot@openclaw.dev").toString("base64"));
     expect(joined).toContain(Buffer.from("pw").toString("base64"));
     expect(socket.written.some((w) => w.endsWith("\r\n.\r\n"))).toBe(true);
   });
 
   it("SMTP 587 without STARTTLS refuses auth and leaks no credentials (fix-plan P1 regression)", async () => {
-    // smtpHandler ??EHLO 不宣??STARTTLS ??必须?��??��?认�?
+    // smtpHandler 的 EHLO 不宣告 STARTTLS → 必须拒绝明文认证
     const socket = new FakeMailSocket(smtpHandler(), "220 smtp.test ESMTP\r\n");
     const adapter = createEmailAdapter({
       imapHost: "imap.test",
       smtpHost: "smtp.test",
       smtpPort: 587,
-      user: "bot@OC.dev",
+      user: "bot@openclaw.dev",
       pass: "secretpw",
       socketFactory: () => socket,
     });
     await expect(adapter.deliver("email:bob@example.com", null, { kind: "chat", content: "x" })).rejects.toThrow(
       /STARTTLS/,
     );
-    // ?�据绝�?得出?�在?��?会�?�?    const joined = socket.written.join("");
+    // 凭据绝不得出现在明文会话中
+    const joined = socket.written.join("");
     expect(joined).not.toContain(Buffer.from("secretpw").toString("base64"));
     expect(joined).not.toContain("AUTH LOGIN");
   });
