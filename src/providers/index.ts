@@ -7,4 +7,10 @@
  * 修改记录：2026-08-13 创建（收束期补 key 接线）
  */
 import "./openai.js";
+import "./ollama.js";
 import "./claude.js";
+
+/*
+ * 修改记录：
+ *   2026-08-24 补齐未完成清单：添加 ollama 独立导入
+ */
