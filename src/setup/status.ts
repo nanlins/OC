@@ -1,12 +1,15 @@
 /**
- * setup/status.ts ?��?三级输出契约�?L2 ?�态�?
+ * setup/status.ts —— 三级输出契约之 L2 状态块
  *
- * ?�责：emitStatus ?�印 `=== OC SETUP: TYPE ===` KEY: value `=== END ===` ?��?
- *       �?runner �??；步骤�?编�??��??��??��??�享（可?�独?��?）�? * ?�键导出：emitStatus, STATUS_BEGIN, STATUS_END
- * ?�鉴：nanoclaw setup/status.ts + docs/setup-flow.md 三级输出契约
+ * 职责：emitStatus 打印 `=== OPENCLAW SETUP: TYPE ===` KEY: value `=== END ===` 块，
+ *       供 runner 解析；步骤与编排器之间无内存共享（可单独重跑）。
+ * 关键导出：emitStatus, STATUS_BEGIN, STATUS_END
+ * 借鉴：nanoclaw setup/status.ts + docs/setup-flow.md 三级输出契约
  *
- * 修改记�?�? *   2026-08-13 ?�建（阶�?8�? */
-export const STATUS_BEGIN = (type: string) => `=== OC SETUP: ${type} ===`;
+ * 修改记录：
+ *   2026-08-13 创建（阶段 8）
+ */
+export const STATUS_BEGIN = (type: string) => `=== OPENCLAW SETUP: ${type} ===`;
 export const STATUS_END = "=== END ===";
 
 export function emitStatus(type: string, kv: Record<string, string | number | boolean>): void {
