@@ -35,7 +35,7 @@ export const HOLD = (reason: string, approverUserId?: string): GuardDecision => 
   approverUserId,
 });
 
-const UNGUARDED_BRAND: unique symbol = Symbol("openclaw.unguarded");
+const UNGUARDED_BRAND: unique symbol = Symbol("oc.unguarded");
 
 export interface Unguarded {
   readonly [UNGUARDED_BRAND]: true;

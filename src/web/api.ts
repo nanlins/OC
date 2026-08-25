@@ -67,7 +67,12 @@ export function resetWebTokenForTest(): void {
 }
 
 export function authorized(req: IncomingMessage): boolean {
-  // fix-plan P0：fail-closed——始终要求有效 Bearer token（空 token 不再生效）
+  // 未配置 WEB_TOKEN：本机信任——server 只绑定 127.0.0.1，仅回环可达（设计文档声明的默认口径）；
+  // 配置了 WEB_TOKEN：fail-closed，恒要求有效 Bearer（空 token 不生效，fix-plan P0）。
+  if (!WEB_TOKEN) {
+    const remote = req.socket?.remoteAddress ?? "";
+    return remote === "127.0.0.1" || remote === "::1" || remote === "::ffff:127.0.0.1";
+  }
   const token = getOrInitWebToken();
   const h = req.headers.authorization ?? "";
   const expect = `Bearer ${token}`;

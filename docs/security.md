@@ -19,7 +19,7 @@
 - **`--security-opt=no-new-privileges`**：禁止子进程提权
 - **`--init`**：tini 作为 PID 1，正确转发 SIGTERM
 - **文件系统隔离**：只挂载显式路径（`/workspace`、`/workspace/agent`、`inbound.db`(RO)、`outbound.db`）
-- **挂载白名单**：`~/.config/openclaw/mount-allowlist.json`，在项目根之外（容器与 agent 不可达）
+- **挂载白名单**：`~/.config/oc/mount-allowlist.json`，在项目根之外（容器与 agent 不可达）
 - **资源限制**：`--cpus`、`--memory`、`--pids-limit`（floor + finite 校验）
 - **出口网络**：可选 `--internal` 网络（egress lockdown）
 
@@ -58,7 +58,7 @@
 - 白名单路径校验
 - `realpath` 归一化
 - RW 挂载需满足双条件（白名单 + 用户确认）
-- 黑名单拒绝（`.ssh`、`.aws`、`.env`、`.config/openclaw` 等）
+- 黑名单拒绝（`.ssh`、`.aws`、`.env`、`.config/oc` 等）
 
 ## 6. 审批流
 

@@ -87,7 +87,7 @@ export async function main(): Promise<void> {
     // 3. 主机模块（host-sweep 经 barrel 注册；投递/CLI 后续阶段）
     await startHostModules();
 
-    log.info("openclaw host started", { pid: process.pid });
+    log.info("oc host started", { pid: process.pid });
 
     await waitForShutdownSignal();
     graceful = true; // 仅信号路径视为优雅关停（P0 修复：崩溃路径保留熔断状态）
@@ -105,7 +105,7 @@ export async function main(): Promise<void> {
     } finally {
       if (graceful) resetCircuitBreaker(DATA_DIR); // SIGTERM/SIGINT 到达即非崩溃；启动崩溃保留退避
       closeDb();
-      log.info("openclaw host stopped", { graceful });
+      log.info("oc host stopped", { graceful });
     }
   }
 }

@@ -21,7 +21,7 @@ export interface GuardedActionSpec {
   grantCoversRequest?: (grantPayload: unknown, input: GuardInput) => boolean;
 }
 
-const BRAND: unique symbol = Symbol("openclaw.guarded-action");
+const BRAND: unique symbol = Symbol("oc.guarded-action");
 
 export interface GuardedAction {
   readonly [BRAND]: true;

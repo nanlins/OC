@@ -34,7 +34,7 @@ function jsonResponse(body: unknown, status = 200): Response {
 }
 
 function tempEnvPath(content: string): string {
-  const dir = mkdtempSync(join(tmpdir(), "openclaw-dingtalk-test-"));
+  const dir = mkdtempSync(join(tmpdir(), "oc-dingtalk-test-"));
   const p = join(dir, ".env");
   writeFileSync(p, content, "utf8");
   return p;

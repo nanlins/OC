@@ -78,7 +78,7 @@ async function waitFor(cond: () => boolean, timeoutMs = 2000): Promise<void> {
 }
 
 function tempEnvPath(content: string): string {
-  const dir = mkdtempSync(join(tmpdir(), "openclaw-slack-test-"));
+  const dir = mkdtempSync(join(tmpdir(), "oc-slack-test-"));
   const p = join(dir, ".env");
   writeFileSync(p, content, "utf8");
   return p;

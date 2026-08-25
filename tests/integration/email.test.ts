@@ -123,7 +123,7 @@ describe("email adapter", () => {
     const socket = new FakeMailSocket(imapHandler(7), "* OK IMAP4rev1 ready\r\n");
     const adapter = createEmailAdapter({
       imapHost: "imap.test",
-      user: "bot@openclaw.dev",
+      user: "bot@oc.local",
       pass: "pw",
       socketFactory: () => socket,
     });
@@ -132,7 +132,7 @@ describe("email adapter", () => {
     await adapter.pollOnce();
     expect(inbound).toHaveLength(1);
     const first = inbound[0]!;
-    expect(first.platformId).toBe("email:bot@openclaw.dev");
+    expect(first.platformId).toBe("email:bot@oc.local");
     expect(first.threadId).toBeNull();
     expect(first.message.senderId).toBe("email:alice@example.com");
     expect(first.message.senderName).toBe("Alice");
@@ -141,7 +141,7 @@ describe("email adapter", () => {
     expect(first.message.content).toContain("hi from email");
     const cmds = socket.written.map((w) => w.replace(/\r\n$/, ""));
     expect(cmds.some((c) => c.endsWith("CAPABILITY"))).toBe(true);
-    expect(cmds.some((c) => c.includes('LOGIN "bot@openclaw.dev" "pw"'))).toBe(true);
+    expect(cmds.some((c) => c.includes('LOGIN "bot@oc.local" "pw"'))).toBe(true);
     expect(cmds.some((c) => c.endsWith("SELECT INBOX"))).toBe(true);
     expect(cmds.some((c) => c.includes("UID FETCH 7"))).toBe(true);
     await adapter.teardown?.();
@@ -151,7 +151,7 @@ describe("email adapter", () => {
     const sockets: FakeMailSocket[] = [];
     const adapter = createEmailAdapter({
       imapHost: "imap.test",
-      user: "bot@openclaw.dev",
+      user: "bot@oc.local",
       pass: "pw",
       socketFactory: () => {
         const s = new FakeMailSocket(imapHandler(7), "* OK ready\r\n");
@@ -175,15 +175,15 @@ describe("email adapter", () => {
       imapHost: "imap.test",
       smtpHost: "smtp.test",
       smtpPort: 465, // fix-plan P1：465 隐式 TLS，无需 STARTTLS
-      user: "bot@openclaw.dev",
+      user: "bot@oc.local",
       pass: "pw",
       socketFactory: () => socket,
     });
     await adapter.deliver("email:bob@example.com", null, { kind: "chat", content: "reply to you" });
     const joined = socket.written.join("");
-    expect(joined).toContain("MAIL FROM:<bot@openclaw.dev>");
+    expect(joined).toContain("MAIL FROM:<bot@oc.local>");
     expect(joined).toContain("RCPT TO:<bob@example.com>");
-    expect(joined).toContain(Buffer.from("bot@openclaw.dev").toString("base64"));
+    expect(joined).toContain(Buffer.from("bot@oc.local").toString("base64"));
     expect(joined).toContain(Buffer.from("pw").toString("base64"));
     expect(socket.written.some((w) => w.endsWith("\r\n.\r\n"))).toBe(true);
   });
@@ -195,7 +195,7 @@ describe("email adapter", () => {
       imapHost: "imap.test",
       smtpHost: "smtp.test",
       smtpPort: 587,
-      user: "bot@openclaw.dev",
+      user: "bot@oc.local",
       pass: "secretpw",
       socketFactory: () => socket,
     });

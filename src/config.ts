@@ -37,7 +37,7 @@ const env = readEnvFile(
     "WEB_PORT",
     "WEB_TOKEN", // P1 修复（se-inspector）：.env 配置不得被静默忽略
     "OC_LOCALE", // 阶段 14 P1-1 修复（se-inspector）：i18n locale 纳入 .env 白名单
-    "OPENCLAW_DATA_DIR",
+    "OC_DATA_DIR",
   ],
   ENV_PATH,
 );
@@ -46,7 +46,7 @@ const pick = (key: string, fallback: string): string => env[key] ?? process.env[
 
 export const APP_ENV = pick("APP_ENV", "dev");
 
-export const DATA_DIR = pick("OPENCLAW_DATA_DIR", join(PROJECT_ROOT, "data"));
+export const DATA_DIR = pick("OC_DATA_DIR", join(PROJECT_ROOT, "data"));
 export const GROUPS_DIR = join(PROJECT_ROOT, "groups");
 /** 会话双 DB 存放根：data/v2-sessions/<agent_group_id>/<session_id>/ */
 export const STORE_DIR = join(DATA_DIR, "v2-sessions");
@@ -54,20 +54,20 @@ export const TEMPLATES_DIR = join(PROJECT_ROOT, "templates");
 export const CENTRAL_DB_PATH = join(DATA_DIR, "v2.db");
 
 /** 挂载白名单在项目根之外——容器与 agent 均不可达（借鉴 nanoclaw 安全设计） */
-export const MOUNT_ALLOWLIST_PATH = join(homedir(), ".config", "openclaw", "mount-allowlist.json");
+export const MOUNT_ALLOWLIST_PATH = join(homedir(), ".config", "oc", "mount-allowlist.json");
 
 export const INSTALL_SLUG = getInstallSlug(PROJECT_ROOT);
-export const CONTAINER_IMAGE_BASE = getInstallSlug(PROJECT_ROOT) ? `openclaw-agent-${INSTALL_SLUG}` : "openclaw-agent";
+export const CONTAINER_IMAGE_BASE = getInstallSlug(PROJECT_ROOT) ? `oc-agent-${INSTALL_SLUG}` : "oc-agent";
 export const CONTAINER_IMAGE = getDefaultContainerImage(INSTALL_SLUG);
 /** 容器 label：孤儿清理只收本安装（作用域隔离） */
-export const CONTAINER_INSTALL_LABEL = `org.openclaw.install=${INSTALL_SLUG}`;
+export const CONTAINER_INSTALL_LABEL = `org.oc.install=${INSTALL_SLUG}`;
 
 export const CONTAINER_CPU_LIMIT = pick("CONTAINER_CPU_LIMIT", "1");
 export const CONTAINER_MEMORY_LIMIT = pick("CONTAINER_MEMORY_LIMIT", "1g");
 export const CONTAINER_PIDS_LIMIT = pick("CONTAINER_PIDS_LIMIT", "100");
 
 export const EGRESS_LOCKDOWN = pick("EGRESS_LOCKDOWN", "false") === "true";
-export const EGRESS_NETWORK = pick("EGRESS_NETWORK", "openclaw-egress");
+export const EGRESS_NETWORK = pick("EGRESS_NETWORK", "oc-egress");
 
 export const TIMEZONE = resolveTimezone([env["TZ"], process.env["TZ"]]);
 

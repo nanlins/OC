@@ -8,7 +8,7 @@ description: 容器操作技能——触发词：docker/容器/镜像/构建/bui
 > 用途：代用户安全管理容器/镜像/网络/卷，操作范围严格限定在本安装实例内。
 
 ## 作用域纪律（核心）
-1. 只操作带本安装 label 的资源（如 `openclaw.install=<实例名>` 的容器/镜像/网络/卷）。
+1. 只操作带本安装 label 的资源（如 `oc.install=<实例名>` 的容器/镜像/网络/卷）。
 2. 任何删除/清理前，先用 label 过滤列出目标清单，向用户确认后再执行。
 3. 禁止无过滤的全局破坏命令：`docker system prune`（不带过滤）、`docker rm $(docker ps -aq)`、`docker rmi $(docker images -q)`。
 4. 无 label 或 label 不匹配的容器一律视为"非本安装"，只报告、不触碰。

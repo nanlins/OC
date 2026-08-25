@@ -133,7 +133,7 @@ describe("container-runner", () => {
   });
 
   it("containerNameFor yields label-safe names", () => {
-    expect(containerNameFor(session)).toMatch(/^openclaw-[0-9a-f]{8}-\d+$/);
+    expect(containerNameFor(session)).toMatch(/^oc-[0-9a-f]{8}-\d+$/);
   });
 });
 

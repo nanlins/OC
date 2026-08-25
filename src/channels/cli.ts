@@ -21,7 +21,7 @@ import { registerChannelAdapter } from "./channel-registry.js";
 import type { ChannelAdapter, ChannelDefaults, ChannelSetup, OutboundMessage } from "./adapter.js";
 
 export function cliSocketPath(): string {
-  return process.platform === "win32" ? `\\\\.\\pipe\\openclaw-chat-${INSTALL_SLUG}` : join(DATA_DIR, "cli-chat.sock");
+  return process.platform === "win32" ? `\\\\.\\pipe\\oc-chat-${INSTALL_SLUG}` : join(DATA_DIR, "cli-chat.sock");
 }
 
 export const CLI_DEFAULTS: ChannelDefaults = {

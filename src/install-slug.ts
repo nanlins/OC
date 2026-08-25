@@ -21,7 +21,7 @@ export function getInstallSlug(projectRoot: string): string {
 }
 
 export function getContainerImageBase(slug: string): string {
-  return `openclaw-agent-${slug}`;
+  return `oc-agent-${slug}`;
 }
 
 export function getDefaultContainerImage(slug: string): string {

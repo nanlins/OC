@@ -44,7 +44,7 @@ function feishuFetch(calls: FetchCall[]): typeof fetch {
 }
 
 function tempEnvPath(content: string): string {
-  const dir = mkdtempSync(join(tmpdir(), "openclaw-feishu-test-"));
+  const dir = mkdtempSync(join(tmpdir(), "oc-feishu-test-"));
   const p = join(dir, ".env");
   writeFileSync(p, content, "utf8");
   return p;

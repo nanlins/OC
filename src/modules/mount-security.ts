@@ -33,7 +33,7 @@ const DEFAULT_BLOCKED = [
   ".ssh",
   ".aws",
   ".env",
-  ".config/openclaw",
+  ".config/oc",
   ".local/bin",
   ".gnupg",
   ".netrc",

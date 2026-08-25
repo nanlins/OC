@@ -76,7 +76,7 @@ export async function dispatch(
       return {
         requestId: frame.requestId,
         ok: true,
-        human: `OpenClaw CLI\n${listing}`,
+        human: `OC CLI\n${listing}`,
         data: { commands: cmds.length },
       };
     }

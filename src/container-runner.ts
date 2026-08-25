@@ -84,7 +84,7 @@ export function resetContainerSpawnerForTest(): void {
 
 export function containerNameFor(session: Session): string {
   const slug = session.agent_group_id.slice(0, 8);
-  return `openclaw-${slug}-${Date.now()}`;
+  return `oc-${slug}-${Date.now()}`;
 }
 
 export function isContainerRunning(sessionId: string): boolean {

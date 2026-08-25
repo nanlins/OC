@@ -14,7 +14,7 @@ import { DATA_DIR } from "../src/config.js";
 const INSTALL_SLUG = createHash("sha1").update(process.cwd()).digest("hex").slice(0, 8);
 const CHAT_PATH =
   process.platform === "win32"
-    ? `\\\\.\\pipe\\openclaw-chat-${INSTALL_SLUG}`
+    ? `\\\\.\\pipe\\oc-chat-${INSTALL_SLUG}`
     : join(DATA_DIR, "cli-chat.sock");
 
 const socket = connect(CHAT_PATH);

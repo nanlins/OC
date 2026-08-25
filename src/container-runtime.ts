@@ -55,7 +55,7 @@ export function ensureContainerRuntimeRunning(): boolean {
     log.fatal(
       `+----------------------------------------------------------+\n` +
         `| container runtime unavailable (${CONTAINER_RUNTIME_BIN}).              |\n` +
-        `| OpenClaw cannot spawn agent containers without it.       |\n` +
+        `| OC cannot spawn agent containers without it.       |\n` +
         `+----------------------------------------------------------+`,
       { err },
     );

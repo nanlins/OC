@@ -9,7 +9,7 @@
 import type { ApprovalRow, AuditRow, GroupRow, MessageRow, MessagingGroupRow, SessionRow, WebEvent, WiringRow } from "./types.js";
 
 function headers(): Record<string, string> {
-  const token = localStorage.getItem("openclaw_token") ?? "demo";
+  const token = localStorage.getItem("oc_token") ?? "";
   const h: Record<string, string> = { "content-type": "application/json" };
   if (token) h.authorization = `Bearer ${token}`;
   return h;

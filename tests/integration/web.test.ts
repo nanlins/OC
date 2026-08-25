@@ -80,7 +80,7 @@ describe("web api", () => {
     const res = await fetch(`http://127.0.0.1:${port}/`);
     expect(res.status).toBe(200);
     const html = await res.text();
-    expect(html).toContain("OpenClaw 管理控制台");
+    expect(html).toContain("OC 管理控制台");
   });
 
   it("build:web — React dist preferred and hashed assets served (fix-plan P2 regression)", async () => {

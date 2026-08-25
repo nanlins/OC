@@ -58,7 +58,7 @@ export function createDiscordAdapter(deps: DiscordDeps): ChannelAdapter {
           d: {
             token: `Bot ${deps.token}`,
             intents: (1 << 0) | (1 << 9) | (1 << 12) | (1 << 15), // GUILDS|GUILD_MESSAGES|DIRECT_MESSAGES|MESSAGE_CONTENT
-            properties: { os: "linux", browser: "openclaw", device: "openclaw" },
+            properties: { os: "linux", browser: "oc", device: "oc" },
           },
         }),
       );

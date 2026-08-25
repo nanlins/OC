@@ -18,7 +18,7 @@ import type { AgentGroup } from "./types.js";
 
 const BASE_CLAUDE_MD = `# Agent 工作区
 
-你是 OpenClaw 的一个 Agent。简洁沟通；工作文件放 /workspace/agent/；
+你是 OC 的一个 Agent。简洁沟通；工作文件放 /workspace/agent/；
 记忆与对话归档规则见容器技能。关键操作遵循系统指令中的审批要求。
 始终使用用户当前消息所用的语言回复（用户用中文则中文、英文则英文、日文则日文）。
 `;

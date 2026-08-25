@@ -26,7 +26,7 @@ export function bootstrapTools(): void {
 
 export async function startMcpServer(ctx: ToolContext): Promise<void> {
   bootstrapTools();
-  const server = new Server({ name: "openclaw", version: "0.0.1" }, { capabilities: { tools: {} } });
+  const server = new Server({ name: "oc", version: "0.0.1" }, { capabilities: { tools: {} } });
 
   server.setRequestHandler(ListToolsRequestSchema, async () => ({
     tools: allTools().map((t) => ({ name: t.name, description: t.description, inputSchema: t.parameters })),

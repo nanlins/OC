@@ -12,7 +12,7 @@ export default defineConfig({
     testTimeout: 10000,
     // 测试数据目录与项目 data/ 隔离（config.ts 加载期读取）；WEB_TOKEN 固定供测试鉴权（fix-plan P0 fail-closed）
     env: {
-      OPENCLAW_DATA_DIR: `${process.env.TEMP ?? "/tmp"}/openclaw-test-data`,
+      OC_DATA_DIR: `${process.env.TEMP ?? "/tmp"}/oc-test-data`,
       WEB_TOKEN: "test-web-token",
     },
   },

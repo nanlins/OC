@@ -24,7 +24,7 @@ let server: Server | null = null;
 let registered = false;
 
 export function cliControlPath(): string {
-  return process.platform === "win32" ? `\\\\.\\pipe\\openclaw-ctl-${INSTALL_SLUG}` : join(DATA_DIR, "ncl.sock");
+  return process.platform === "win32" ? `\\\\.\\pipe\\oc-ctl-${INSTALL_SLUG}` : join(DATA_DIR, "ncl.sock");
 }
 
 /** 单行帧处理（测试可直接调用）。

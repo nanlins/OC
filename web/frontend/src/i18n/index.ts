@@ -23,7 +23,7 @@ const DICT: Record<Locale, Record<string, string>> = {
     "nav.wirings": "接线",
     "nav.approvals": "审批",
     "nav.audit": "审计",
-    "dashboard.title": "OpenClaw 管理控制台",
+    "dashboard.title": "OC 管理控制台",
     "dashboard.groups": "Agent 群组",
     "dashboard.sessions": "活跃会话",
     "dashboard.pending": "待审批",
@@ -63,7 +63,7 @@ const DICT: Record<Locale, Record<string, string>> = {
     "nav.wirings": "Wirings",
     "nav.approvals": "Approvals",
     "nav.audit": "Audit",
-    "dashboard.title": "OpenClaw Console",
+    "dashboard.title": "OC Console",
     "dashboard.groups": "Agent Groups",
     "dashboard.sessions": "Active Sessions",
     "dashboard.pending": "Pending Approvals",
@@ -103,7 +103,7 @@ const DICT: Record<Locale, Record<string, string>> = {
     "nav.wirings": "配線",
     "nav.approvals": "承認",
     "nav.audit": "監査",
-    "dashboard.title": "OpenClaw 管理コンソール",
+    "dashboard.title": "OC 管理コンソール",
     "dashboard.groups": "Agent グループ",
     "dashboard.sessions": "アクティブセッション",
     "dashboard.pending": "承認待ち",
@@ -138,7 +138,7 @@ const DICT: Record<Locale, Record<string, string>> = {
   },
 };
 
-let locale: Locale = (localStorage.getItem("openclaw_locale") as Locale) || "zh";
+let locale: Locale = (localStorage.getItem("oc_locale") as Locale) || "zh";
 if (!LOCALES.includes(locale)) locale = "zh";
 const listeners = new Set<() => void>();
 
@@ -148,7 +148,7 @@ export function getLocale(): Locale {
 
 export function setLocale(l: Locale): void {
   locale = l;
-  localStorage.setItem("openclaw_locale", l);
+  localStorage.setItem("oc_locale", l);
   for (const lsn of listeners) lsn();
 }
 

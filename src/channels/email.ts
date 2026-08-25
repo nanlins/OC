@@ -323,7 +323,7 @@ export function createEmailAdapter(deps: EmailDeps): ChannelAdapter & { pollOnce
     msg: OutboundMessage,
   ): Promise<string | undefined> {
     const to = platformId.replace(/^email:/, "");
-    const ehloDomain = deps.user.split("@")[1] ?? "openclaw.local";
+    const ehloDomain = deps.user.split("@")[1] ?? "oc.local";
     // fix-plan P1：465 隐式 TLS；其余端口（如 587）明文连接后必须 STARTTLS 升级，凭据只在 TLS 上发送
     const implicitTls = smtpPort === 465;
     let socket = socketFactory({ host: smtpHost, port: smtpPort, secure: implicitTls });
