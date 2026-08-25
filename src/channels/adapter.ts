@@ -47,6 +47,8 @@ export interface OutboundMessage {
   type?: "ask_question" | "card";
   /** fix-plan 流式：operation=edit 时的目标平台消息 id（宿主从 delivered 解析），渠道据此 editMessageText */
   editTarget?: string | null;
+  /** 阶段 12 CLI TUI：会话元数据帧（agent 名/provider/model）；非 CLI 通道忽略 */
+  meta?: { agent?: string | null; model?: string | null; provider?: string | null } | null;
 }
 
 export interface ChannelSetup {
@@ -81,6 +83,8 @@ export interface ChannelAdapter {
   setTyping?: (platformId: string, threadId?: string | null) => Promise<void>;
   subscribe?: (platformId: string, threadId: string | null) => Promise<void>;
   openDM?: (userHandle: string) => Promise<string>;
+  /** 阶段 12 CLI TUI：容器工具运行状态广播（当前仅 cli 通道实现；host-sweep/delivery 轮询驱动） */
+  notifyTool?: (tool: string, status: "running" | "done" | "error", elapsedMs?: number) => void;
   defaults?: ChannelDefaults;
 }
 
@@ -88,3 +92,9 @@ export interface ChannelRegistration {
   factory: () => ChannelAdapter | null; // 凭证缺失返回 null 即跳过
   defaults?: ChannelDefaults;
 }
+
+/*
+ * 修改记录：
+ *   2026-08-25 阶段 12：CLI 聊天界面（meta/tool/end 帧协议 + TUI 渲染）
+ */
+

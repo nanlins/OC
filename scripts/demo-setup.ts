@@ -30,14 +30,15 @@ ensureContainerConfig(groupId, "openai");
 updateContainerConfig(groupId, { model: "deepseek-chat" });
 console.log(`[setup] agent group: ${groupId} (${DEMO_NAME})`);
 
-// 创建 CLI 消息群组（幂等——唯一键 channel_type+platform_id+instance）
+// 创建 CLI 消息群组（幂等——唯一键 channel_type+platform_id+instance）。
+// platformId 必须为 "local"：channels/cli.ts 入站回调固定用 platformId="local"（阶段 12 修复）。
 let mg = getDb()
   .prepare("SELECT * FROM messaging_groups WHERE channel_type = ? AND platform_id = ?")
-  .get("cli", "cli-demo") as { id: string } | undefined;
+  .get("cli", "local") as { id: string } | undefined;
 if (!mg) {
   mg = createMessagingGroup({
     channelType: "cli",
-    platformId: "cli-demo",
+    platformId: "local",
     instance: "default",
     name: "CLI Demo Chat",
   });
@@ -60,3 +61,8 @@ try {
 closeDb();
 console.log("[setup] done! Run: pnpm dev  (in one terminal)");
 console.log("[setup] then: pnpm oc chat Demo  (in another terminal)");
+/*
+ * 修改记录：
+ *   2026-08-25 阶段 12：修复 CLI messaging group platformId 必须为 local（对齐 channels/cli.ts 入站回调）
+ */
+

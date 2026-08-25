@@ -23,14 +23,16 @@ import {
   getDeliveredIds,
   getDeliveredPlatformMessageId,
   getDueOutboundMessages,
+  getContainerToolState,
   markDelivered,
   markDeliveryFailed,
   openInboundDb,
   openOutboundDb,
 } from "./db/session-db.js";
 import { inboundDbPath, outboundDbPath, readOutboxFiles, clearOutbox, type OutboxFile } from "./session-manager.js";
-import { requireDeliveryAdapter } from "./channels/channel-registry.js";
+import { requireDeliveryAdapter, getChannelAdapterExact } from "./channels/channel-registry.js";
 import { runGuarded, isUnguarded, type DeliveryActionRegistration } from "./delivery-guard.js";
+import { configFromDb } from "./container-config.js";
 import type { MessageOut, PendingApproval, Session } from "./types.js";
 
 export const MAX_DELIVERY_ATTEMPTS = 3;
@@ -61,6 +63,15 @@ async function deliverViaAdapter(
     files,
     operation: out.operation ?? null, // P1-5 修复：operation 透传
     editTarget, // fix-plan 流式：编辑目标
+    // 阶段 12 CLI TUI：会话元数据帧（仅 CLI 通道消费；其他通道忽略未知字段）
+    meta:
+      key === "cli"
+        ? {
+            agent: session.agent_group_id,
+            model: configFromDb(session.agent_group_id).model ?? undefined,
+            provider: session.agent_provider ?? undefined,
+          }
+        : null,
   });
   return { platformMessageId };
 }
@@ -205,6 +216,37 @@ async function handleSystemAction(
 let activeTimer: NodeJS.Timeout | null = null;
 let sweepTimer: NodeJS.Timeout | null = null;
 
+// 阶段 12 CLI TUI：容器工具状态跟踪（sessionId → 当前工具 + 开始时间），变化时经 CLI 通道广播 tool 帧
+const toolStates = new Map<string, { tool: string | null; startedAt: number }>();
+
+/** 只读 container_state（容器写、主机读），不违反单写者原则；缺适配器/读失败静默 */
+function watchContainerTools(): void {
+  const adapter = getChannelAdapterExact("cli");
+  if (!adapter?.notifyTool) return;
+  for (const s of getRunningSessions()) {
+    try {
+      const outbound = openOutboundDb(outboundDbPath(s.agent_group_id, s.id));
+      const state = getContainerToolState(outbound);
+      outbound.close();
+      const nowTool = state.current_tool;
+      const prev = toolStates.get(s.id);
+      if (!prev || prev.tool !== nowTool) {
+        if (prev?.tool && prev.tool !== nowTool) {
+          adapter.notifyTool(prev.tool, "done", Date.now() - prev.startedAt);
+        }
+        if (nowTool) {
+          toolStates.set(s.id, { tool: nowTool, startedAt: Date.now() });
+          adapter.notifyTool(nowTool, "running");
+        } else {
+          toolStates.set(s.id, { tool: null, startedAt: 0 });
+        }
+      }
+    } catch {
+      /* 单会话读取失败不影响其他会话 */
+    }
+  }
+}
+
 export function startActiveDeliveryPoll(): void {
   if (activeTimer) return;
   activeTimer = setInterval(() => {
@@ -217,6 +259,7 @@ export function startActiveDeliveryPoll(): void {
         }
       }
     })();
+    watchContainerTools(); // 阶段 12：工具状态广播（同步快查，不阻塞投递）
   }, ACTIVE_POLL_MS);
   activeTimer.unref();
   log.info("active delivery poll started (1s)");
@@ -282,3 +325,9 @@ onHostStart("delivery", () => {
   startSweepDeliveryPoll();
 });
 onHostShutdown("delivery", () => stopDeliveryPolls());
+
+/*
+ * 修改记录：
+ *   2026-08-25 阶段 12：CLI 聊天界面（meta/tool/end 帧协议 + TUI 渲染）
+ */
+
