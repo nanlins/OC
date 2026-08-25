@@ -102,10 +102,11 @@ export const OUTBOUND_SCHEMA = `
   );
 `;
 
-/** 打开会话库：DELETE journal 是跨挂载可见性的承重项 */
+/** 打开会话库：DELETE journal 是跨挂载可见性的承重项。
+ *  只读连接不可执行 journal_mode（写 pragma），否则抛 readonly——journal 模式只由写者设置（阶段 12 实测修复）。 */
 function openSessionDb(path: string, readonly: boolean): Database.Database {
   const db = new Database(path, { readonly });
-  db.pragma("journal_mode = DELETE");
+  if (!readonly) db.pragma("journal_mode = DELETE");
   db.pragma("busy_timeout = 5000");
   return db;
 }

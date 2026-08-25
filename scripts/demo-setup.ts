@@ -58,6 +58,27 @@ try {
   console.log("[setup] wiring already exists, skipping");
 }
 
+// 阶段 12 实测修复：CLI 通道是广播通道，若同一 CLI 群组挂多个 agent 的 wiring，
+// 一条消息会扇出给所有 agent（串台）。收敛：删掉 local 群组上的非 Demo wiring，
+// 以及残留的 cli-demo 旧群组及其 wiring。
+const staleWirings = getDb()
+  .prepare(
+    "SELECT id FROM messaging_group_agents WHERE messaging_group_id = ? AND agent_group_id <> ?",
+  )
+  .all(mg.id, groupId) as Array<{ id: string }>;
+for (const w of staleWirings) {
+  getDb().prepare("DELETE FROM messaging_group_agents WHERE id = ?").run(w.id);
+  console.log(`[setup] removed stale wiring: ${w.id} (非 Demo agent 占用 CLI 群组)`);
+}
+const staleMg = getDb()
+  .prepare("SELECT id FROM messaging_groups WHERE channel_type = ? AND platform_id = ?")
+  .get("cli", "cli-demo") as { id: string } | undefined;
+if (staleMg) {
+  getDb().prepare("DELETE FROM messaging_group_agents WHERE messaging_group_id = ?").run(staleMg.id);
+  getDb().prepare("DELETE FROM messaging_groups WHERE id = ?").run(staleMg.id);
+  console.log(`[setup] removed stale messaging group: ${staleMg.id} (cli-demo)`);
+}
+
 closeDb();
 console.log("[setup] done! Run: pnpm dev  (in one terminal)");
 console.log("[setup] then: pnpm oc chat Demo  (in another terminal)");

@@ -67,11 +67,13 @@ function clearInputLine(): void {
 /**
  * 打字机：消费 stripMarkdown 纯文本，按 4 字符块输出（绝不切片 ANSI）。
  * 行首打印一次 agent 前缀；Ctrl+C 跳过剩余；非交互环境整段直出。
+ * onDone 在打字机结束（含跳过）时回调，由帧队列驱动下一条消息。
  */
-function typewriterPrint(rawText: string): void {
+function typewriterPrint(rawText: string, onDone: () => void): void {
   const text = stripMarkdown(rawText);
   if (!interactive) {
     write(renderChat(text) + "\n");
+    onDone();
     return;
   }
   typewriterActive = true;
@@ -84,13 +86,13 @@ function typewriterPrint(rawText: string): void {
       write(text.slice(pos));
       write("\n");
       typewriterActive = false;
-      redrawPrompt();
+      onDone();
       return;
     }
     if (pos >= text.length) {
       write("\n");
       typewriterActive = false;
-      redrawPrompt();
+      onDone();
       return;
     }
     // 行首补 agent 前缀
@@ -105,28 +107,56 @@ function typewriterPrint(rawText: string): void {
   step();
 }
 
-function handleFrame(frame: CliFrame): void {
+/**
+ * 帧渲染队列（阶段 12 实测修复核心）：
+ * 服务端是"广播所有会话投递"的通道，多条消息的帧可能同时到达。
+ * 若来一帧打一帧，打字机消息会被另一条消息的 meta/chat 穿插成碎片。
+ * 方案：全部帧进 FIFO 队列，打字机完成（当前消息 end 帧处理完）后才取下一条 →
+ * 多条消息顺序显示、零穿插。
+ */
+const frameQueue: CliFrame[] = [];
+let messageBusy = false; // 当前正在打字机渲染一条 chat 消息
+
+function enqueueFrame(frame: CliFrame): void {
+  frameQueue.push(frame);
+  drainQueue();
+}
+
+function drainQueue(): void {
+  if (messageBusy || frameQueue.length === 0) return;
+  const frame = frameQueue.shift()!;
   switch (frame.kind) {
     case "meta": {
       const agent = frame.agent ?? "?";
       const model = frame.model ?? "?";
-      const provider = frame.provider ?? "?";
-      write(kleur.gray(` · 会话 ${agent.slice(0, 8)} · ${model} · ${provider}`) + "\n");
+      write(kleur.gray(` · 会话 ${agent.slice(0, 8)} · ${model}`) + "\n");
+      drainQueue(); // meta 瞬时渲染，继续处理下一条
       break;
     }
     case "chat":
-      typewriterPrint(frame.text);
+      messageBusy = true;
+      typewriterPrint(frame.text, () => {
+        messageBusy = false;
+        drainQueue();
+      });
       break;
     case "tool":
       write(renderFrame(frame).join("\n") + "\n");
+      drainQueue();
       break;
     case "error":
       write(renderError(frame.text) + "\n");
+      drainQueue();
       break;
     case "end":
-      if (!typewriterActive) redrawPrompt();
+      redrawPrompt(); // 一条消息渲染完毕：唯一重绘输入行的时机
+      drainQueue();
       break;
   }
+}
+
+function handleFrame(frame: CliFrame): void {
+  enqueueFrame(frame);
 }
 
 // ---- socket ----
@@ -150,7 +180,7 @@ socket.on("data", (chunk) => {
     try {
       handleFrame(JSON.parse(line) as CliFrame);
     } catch {
-      typewriterPrint(line); // 纯文本兜底（老主机）
+      enqueueFrame({ kind: "chat", text: line }); // 纯文本兜底（老主机）
     }
   }
 });
