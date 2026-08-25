@@ -27,7 +27,7 @@ if (!hasTable("agent_groups")) {
 const existing = listAgentGroups().find((g) => g.folder === DEMO_GROUP);
 const groupId = existing?.id ?? createAgentGroup({ name: DEMO_NAME, folder: DEMO_GROUP, agentProvider: "openai" }).id;
 ensureContainerConfig(groupId, "openai");
-updateContainerConfig(groupId, { model: "deepseek-chat" });
+updateContainerConfig(groupId, { model: "deepseek-v4-flash" });
 console.log(`[setup] agent group: ${groupId} (${DEMO_NAME})`);
 
 // 创建 CLI 消息群组（幂等——唯一键 channel_type+platform_id+instance）。

@@ -11,6 +11,7 @@ import {
   renderFrame,
   renderMarkdownInline,
   renderTool,
+  stripMarkdown,
   toolStatusGlyph,
 } from "../../src/channels/cli-render.js";
 
@@ -64,6 +65,18 @@ describe("cli render", () => {
     expect(renderChat("hi")).toContain("hi");
     expect(renderTool("bash", "running")).toContain("bash");
     expect(renderError("boom")).toContain("boom");
+  });
+
+  it("stripMarkdown 产出无 ANSI 的纯文本（打字机安全，阶段 12 乱码修复）", () => {
+    const plain = stripMarkdown("**加粗** 和 `code` 和 *斜体*\n# 标题\n- 列表项\n> 引用");
+    expect(plain.includes("\u001b")).toBe(false); // 无 ANSI 转义
+    expect(plain).toContain("加粗");
+    expect(plain).toContain("code");
+    expect(plain).toContain("标题");
+    expect(plain).toContain("列表项");
+    expect(plain).toContain("引用");
+    expect(plain).not.toContain("**");
+    expect(plain).not.toContain("```");
   });
 });
 

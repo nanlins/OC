@@ -4,18 +4,31 @@
  * 职责：连接 CLI chat socket，终端交互：状态栏 + 消息流（打字机渲染） + 工具块 + 输入历史 + 斜杠命令。
  * 关键导出：无（CLI 脚本）
  * 用法：pnpm chat；/help 看命令；Ctrl+C 跳过打字机；Ctrl+D 退出。
- * 承重不变量：帧解析失败降级为纯文本行（不崩溃）；退出时恢复终端（raw mode off + 光标显示）。
+ * 承重不变量：
+ *   - 打字机只消费 stripMarkdown 纯文本（绝不切片 ANSI，防转义序列乱码——阶段 12 实测修复）；
+ *   - end 帧是唯一重绘输入行的时机（防 prompt 重复叠加）；
+ *   - 打字机期间忽略普通输入（仅 Ctrl+C 跳过），防消息与输入行互相穿插；
+ *   - 退出时恢复终端（raw mode off + 光标显示）。
  * 借鉴：opencode TUI 布局（状态栏/消息流/输入行）+ aichat REPL 命令集；渲染逻辑复用 channels/cli-render.ts。
  *
  * 修改记录：
  *   2026-08-24 创建（演示版：逐行 JSON 打印）
  *   2026-08-25 阶段 12 重写：TUI 交互（raw mode + 历史 + 打字机 + meta/tool/end 帧）
+ *   2026-08-25 阶段 12 实测修复：打字机切 ANSI 乱码 → 纯文本块；prompt 重复 → end 唯一重绘；
+ *             用户消息回显；打字机期间禁输入；meta 灰色行；状态栏不再依赖 meta
  */
 import { connect } from "node:net";
 import { createHash } from "node:crypto";
 import { join } from "node:path";
 import kleur from "kleur";
-import { renderChat, renderError, renderFrame, renderTool, USER_PREFIX, type CliFrame } from "../src/channels/cli-render.js";
+import {
+  renderChat,
+  renderError,
+  renderFrame,
+  stripMarkdown,
+  AGENT_PREFIX,
+  type CliFrame,
+} from "../src/channels/cli-render.js";
 import { DATA_DIR } from "../src/config.js";
 
 const INSTALL_SLUG = createHash("sha1").update(process.cwd()).digest("hex").slice(0, 8);
@@ -24,10 +37,10 @@ const CHAT_PATH =
 
 const out = process.stdout;
 const write = (s: string) => out.write(s);
+const interactive = process.stdin.isTTY === true && !process.env.CI;
 
 // ---- 终端状态 ----
 let connected = false;
-let meta: { agent?: string | null; model?: string | null; provider?: string | null } | null = null;
 
 // ---- 输入状态 ----
 let inputBuf = "";
@@ -37,65 +50,78 @@ let typewriterActive = false;
 let typewriterSkip = false;
 
 // ---- 渲染 ----
-const interactive = process.stdin.isTTY === true && !process.env.CI;
-
 function redrawPrompt(): void {
   if (!interactive) return;
   write("\n" + kleur.dim("›") + " " + inputBuf);
 }
 
 function renderStatusBar(): void {
-  if (!connected) {
-    write(kleur.inverse(" OC chat · connecting… ") + "\n");
-    return;
-  }
-  const agent = meta?.agent ?? "?";
-  const model = meta?.model ?? "?";
-  const provider = meta?.provider ?? "?";
-  write(kleur.inverse(` OC chat · ${agent.slice(0, 8)} · ${model} · ${provider} `) + "\n");
+  write(kleur.inverse(" OC chat · " + (connected ? "就绪（输入 /help 看命令）" : "连接中…") + " ") + "\n");
 }
 
-/** 打字机渲染：按块输出 chat 文本，Ctrl+C 跳过；非交互环境整段直出 */
-function typewriterPrint(text: string): void {
+/** 清掉当前输入行（光标回行首 + 擦除整行），供发送/消息插入前调用 */
+function clearInputLine(): void {
+  write("\r\x1b[2K");
+}
+
+/**
+ * 打字机：消费 stripMarkdown 纯文本，按 4 字符块输出（绝不切片 ANSI）。
+ * 行首打印一次 agent 前缀；Ctrl+C 跳过剩余；非交互环境整段直出。
+ */
+function typewriterPrint(rawText: string): void {
+  const text = stripMarkdown(rawText);
   if (!interactive) {
     write(renderChat(text) + "\n");
     return;
   }
   typewriterActive = true;
   typewriterSkip = false;
-  const rendered = renderChat(text);
-  let printed = 0;
+  const CHUNK = 4;
+  let pos = 0;
   const step = () => {
-    if (typewriterSkip || printed >= rendered.length) {
-      write(rendered.slice(printed));
+    if (typewriterSkip) {
+      // 跳过：整段直出（此时屏幕上可能已有部分块——先补全剩余，不做清行重绘，保证无乱码）
+      write(text.slice(pos));
       write("\n");
       typewriterActive = false;
       redrawPrompt();
       return;
     }
-    const chunk = rendered.slice(printed, printed + 2);
+    if (pos >= text.length) {
+      write("\n");
+      typewriterActive = false;
+      redrawPrompt();
+      return;
+    }
+    // 行首补 agent 前缀
+    if (pos === 0 || text[pos - 1] === "\n") {
+      write(AGENT_PREFIX + " ");
+    }
+    const chunk = text.slice(pos, pos + CHUNK);
     write(chunk);
-    printed += 2;
-    setTimeout(step, 6);
+    pos += CHUNK;
+    setTimeout(step, 7);
   };
   step();
 }
 
 function handleFrame(frame: CliFrame): void {
   switch (frame.kind) {
-    case "meta":
-      meta = frame;
+    case "meta": {
+      const agent = frame.agent ?? "?";
+      const model = frame.model ?? "?";
+      const provider = frame.provider ?? "?";
+      write(kleur.gray(` · 会话 ${agent.slice(0, 8)} · ${model} · ${provider}`) + "\n");
       break;
+    }
     case "chat":
       typewriterPrint(frame.text);
       break;
     case "tool":
       write(renderFrame(frame).join("\n") + "\n");
-      redrawPrompt();
       break;
     case "error":
       write(renderError(frame.text) + "\n");
-      redrawPrompt();
       break;
     case "end":
       if (!typewriterActive) redrawPrompt();
@@ -124,8 +150,7 @@ socket.on("data", (chunk) => {
     try {
       handleFrame(JSON.parse(line) as CliFrame);
     } catch {
-      // 纯文本兜底（老主机）：当 chat 帧处理
-      typewriterPrint(line);
+      typewriterPrint(line); // 纯文本兜底（老主机）
     }
   }
 });
@@ -143,6 +168,43 @@ socket.on("close", () => {
   process.exit(0);
 });
 
+// ---- 输入管线 ----
+function sendUserMessage(text: string): void {
+  if (!text.trim()) {
+    redrawPrompt();
+    return;
+  }
+  const cmd = text.trim();
+  if (cmd === "/help") {
+    write(HELP_TEXT + "\n");
+    redrawPrompt();
+    return;
+  }
+  if (cmd === "/exit" || cmd === "/quit") {
+    restoreTerminal();
+    write("\n");
+    process.exit(0);
+  }
+  // 用户消息回显：清输入行 → 蓝色 you 前缀 → 时间线
+  clearInputLine();
+  write(kleur.blue(" you  ") + stripMarkdown(cmd) + "\n");
+  write(kleur.gray(" " + "─".repeat(8) + " " + new Date().toLocaleTimeString()) + "\n");
+  socket.write(JSON.stringify({ text: cmd }) + "\n");
+}
+
+const HELP_TEXT = [
+  "",
+  kleur.bold("OC chat 命令"),
+  "  Enter    发送",
+  "  ↑ / ↓    历史",
+  "  Ctrl+C   跳过打字机",
+  "  Ctrl+D   退出（空输入时）",
+  "  /help    本帮助",
+  "  /clear   清空会话上下文",
+  "  /exit    退出",
+  "",
+].join("\n");
+
 // ---- 键盘输入（raw mode；非 TTY 降级为行模式读取） ----
 import { createInterface, emitKeypressEvents } from "node:readline";
 
@@ -156,8 +218,7 @@ function restoreTerminal(): void {
   process.stdin.pause();
 }
 
-if (!process.stdin.isTTY || process.env.CI) {
-  // 非交互降级：每行发送；收到的帧由上方主 data 监听器整段渲染（打字机自动关闭）
+if (!interactive) {
   const rl = createInterface({ input: process.stdin });
   rl.on("line", (line) => {
     if (line === "/exit" || line === "/quit") {
@@ -171,121 +232,85 @@ if (!process.stdin.isTTY || process.env.CI) {
   process.stdin.setRawMode(true);
   process.stdin.setEncoding("utf8");
 
-  const HELP_TEXT = [
-    "",
-    kleur.bold("OC chat 命令"),
-    "  Enter    发送",
-    "  ↑ / ↓    历史",
-    "  Ctrl+C   跳过打字机",
-    "  Ctrl+D   退出（空输入时）",
-    "  /help    本帮助",
-    "  /clear   清空会话上下文",
-    "  /exit    退出",
-    "",
-  ].join("\n");
+  process.stdin.on(
+    "keypress",
+    (_str: string | undefined, key: { name?: string; ctrl?: boolean; sequence?: string }) => {
+      if (!connected) return;
 
-  function sendLine(text: string): void {
-    if (!text.trim()) {
-      redrawPrompt();
-      return;
-    }
-    write(kleur.gray(" " + "─".repeat(8) + " " + new Date().toLocaleTimeString()) + "\n");
-    const cmd = text.trim();
-    if (cmd === "/help") {
-      write(HELP_TEXT + "\n");
-      redrawPrompt();
-      return;
-    }
-    if (cmd === "/exit" || cmd === "/quit") {
-      restoreTerminal();
-      write("\n");
-      process.exit(0);
-    }
-    socket.write(JSON.stringify({ text: cmd }) + "\n");
-  }
-
-  function eraseCurrentInput(): void {
-    // 光标回到输入行首并清空该行
-    write("\r\x1b[2K" + kleur.dim("›") + " ");
-  }
-
-  process.stdin.on("keypress", (_str: string | undefined, key: { name?: string; ctrl?: boolean; sequence?: string }) => {
-    if (!connected) return;
-
-    if (key.name === "return" || key.name === "enter") {
-      write("\n");
-      const text = inputBuf;
-      inputBuf = "";
-      if (text.trim()) {
-        history.push(text);
-        if (history.length > 100) history.shift();
-      }
-      historyIdx = -1;
-      sendLine(text);
-      return;
-    }
-
-    if (key.name === "up") {
-      if (historyIdx === -1) historyIdx = history.length - 1;
-      else if (historyIdx > 0) historyIdx--;
-      if (historyIdx >= 0) {
-        eraseCurrentInput();
-        inputBuf = history[historyIdx] ?? "";
-        write(inputBuf);
-      }
-      return;
-    }
-
-    if (key.name === "down") {
-      if (historyIdx === -1) return;
-      historyIdx++;
-      eraseCurrentInput();
-      if (historyIdx >= history.length) {
-        historyIdx = -1;
-        inputBuf = "";
-      } else {
-        inputBuf = history[historyIdx] ?? "";
-        write(inputBuf);
-      }
-      return;
-    }
-
-    if (key.ctrl && key.name === "c") {
+      // 打字机期间：仅允许 Ctrl+C 跳过，其余按键忽略（防消息与输入穿插）
       if (typewriterActive) {
-        typewriterSkip = true;
-      } else {
-        write("\n" + kleur.gray("(Ctrl+C 跳过打字机；/exit 退出)") + "\n");
+        if (key.ctrl && key.name === "c") {
+          typewriterSkip = true;
+        }
+        return;
+      }
+
+      if (key.name === "return" || key.name === "enter") {
+        const text = inputBuf;
+        inputBuf = "";
+        historyIdx = -1;
+        if (text.trim()) {
+          history.push(text);
+          if (history.length > 100) history.shift();
+        }
+        sendUserMessage(text);
+        return;
+      }
+
+      if (key.name === "up") {
+        if (historyIdx === -1) historyIdx = history.length - 1;
+        else if (historyIdx > 0) historyIdx--;
+        if (historyIdx >= 0) {
+          clearInputLine();
+          write(kleur.dim("›") + " ");
+          inputBuf = history[historyIdx] ?? "";
+          write(inputBuf);
+        }
+        return;
+      }
+
+      if (key.name === "down") {
+        if (historyIdx === -1) return;
+        historyIdx++;
+        clearInputLine();
+        write(kleur.dim("›") + " ");
+        if (historyIdx >= history.length) {
+          historyIdx = -1;
+          inputBuf = "";
+        } else {
+          inputBuf = history[historyIdx] ?? "";
+          write(inputBuf);
+        }
+        return;
+      }
+
+      if (key.ctrl && key.name === "c") {
+        write("\n" + kleur.gray("(输入 /exit 退出)") + "\n");
         redrawPrompt();
+        return;
       }
-      return;
-    }
 
-    if (key.ctrl && key.name === "d") {
-      if (inputBuf === "") {
-        restoreTerminal();
-        write("\n");
-        process.exit(0);
+      if (key.ctrl && key.name === "d") {
+        if (inputBuf === "") {
+          restoreTerminal();
+          write("\n");
+          process.exit(0);
+        }
+        return;
       }
-      return;
-    }
 
-    if (key.name === "backspace") {
-      if (inputBuf.length > 0) {
-        inputBuf = inputBuf.slice(0, -1);
-        write("\b \b");
+      if (key.name === "backspace") {
+        if (inputBuf.length > 0) {
+          inputBuf = inputBuf.slice(0, -1);
+          write("\b \b");
+        }
+        return;
       }
-      return;
-    }
 
-    if (key.sequence && key.sequence.length === 1 && key.sequence >= " ") {
-      inputBuf += key.sequence;
-      write(key.sequence);
-    }
-  });
+      if (key.sequence && key.sequence.length === 1 && key.sequence >= " ") {
+        inputBuf += key.sequence;
+        write(key.sequence);
+      }
+    },
+  );
 }
-
-/**
- * 修改记录：
- *   2026-08-25 阶段 12：CLI 聊天 TUI（raw mode + 历史 + 打字机 + 斜杠命令）
- */
-

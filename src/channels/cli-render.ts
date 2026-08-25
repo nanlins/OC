@@ -44,6 +44,22 @@ export function renderChat(text: string): string {
   return lines.map((line) => `${AGENT_PREFIX} ${renderMarkdownInline(line)}`).join("\n");
 }
 
+/**
+ * 打字机安全纯文本：剥离 markdown 标记（`code`、**bold**、*italic*、# 标题、- 列表符号）。
+ * 重要：打字机必须消费本函数输出——纯文本不含 ANSI，按字符切片绝不会切碎转义序列（阶段 12 修复乱码根因）。
+ */
+export function stripMarkdown(text: string): string {
+  return text
+    .replace(/```[\s\S]*?```/g, (m) => m.replace(/```/g, ""))
+    .replace(/`([^`]+)`/g, "$1")
+    .replace(/\*\*([^*]+)\*\*/g, "$1")
+    .replace(/(^|\s)\*([^*\n]+)\*(?=\s|$)/g, "$1$2")
+    .replace(/(^|\s)_([^_\n]+)_(?=\s|$)/g, "$1$2")
+    .replace(/^#{1,6}\s+/gm, "")
+    .replace(/^[-*+]\s+/gm, "· ")
+    .replace(/^>\s?/gm, "");
+}
+
 export function renderTool(tool: string, status: "running" | "done" | "error", elapsedMs?: number, tick: number = 0): string {
   const suffix = status !== "running" && elapsedMs !== undefined ? kleur.gray(`  ${(elapsedMs / 1000).toFixed(1)}s`) : "";
   return `${TOOL_PREFIX}${toolStatusGlyph(status, tick)} ${kleur.dim(tool)}${suffix}`;
