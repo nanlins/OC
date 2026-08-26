@@ -237,6 +237,102 @@ export function registerAllResources(): void {
     },
   });
 
+  // 阶段 12（tasks 全 CRUD 补齐）：create/pause/resume/delete
+  registerCommand({
+    resource: "tasks",
+    verb: "create",
+    scope: "agent-group",
+    agentVisible: true,
+    handler: async (args, caller) => {
+      const groupId = caller.agentGroupId;
+      if (!groupId) throw new LocalizedError("cli.group_id_required", {}, "invalid-args");
+      const cron = args.flags.cron as string | undefined;
+      const processAfter = args.flags["process-after"] as string | undefined;
+      const message = (args.flags.message as string | undefined) ?? args.positionals.join(" ");
+      if (!cron && !processAfter) throw new LocalizedError("cli.task_cron_required", {}, "invalid-args");
+      if (!message) throw new LocalizedError("cli.task_message_required", {}, "invalid-args");
+      const { createTaskInternal } = await import("../modules/scheduling.js");
+      try {
+        const result = createTaskInternal(groupId, { message, cron: cron ?? null, processAfter: processAfter ?? null });
+        return { ok: true, seriesId: result.seriesId, next: result.next ?? null };
+      } catch (err) {
+        throw Object.assign(new Error(String(err)), { code: "invalid-args" });
+      }
+    },
+  });
+
+  registerCommand({
+    resource: "tasks",
+    verb: "pause",
+    scope: "agent-group",
+    agentVisible: true,
+    handler: (args, caller) => {
+      if (!args.id) throw new LocalizedError("cli.task_id_required", {}, "invalid-args");
+      let n = 0;
+      for (const s of listSessions()) {
+        if (!(s.thread_id ?? "").startsWith("system:tasks:")) continue;
+        if (caller.agentGroupId && s.agent_group_id !== caller.agentGroupId) continue;
+        const inbound = openInboundDb(inboundDbPath(s.agent_group_id, s.id));
+        try {
+          n += inbound
+            .prepare("UPDATE messages_in SET status = 'paused' WHERE kind = 'task' AND status = 'pending' AND (series_id = ? OR id = ?)")
+            .run(args.id, args.id).changes;
+        } finally {
+          inbound.close();
+        }
+      }
+      return { paused: n };
+    },
+  });
+
+  registerCommand({
+    resource: "tasks",
+    verb: "resume",
+    scope: "agent-group",
+    agentVisible: true,
+    handler: (args, caller) => {
+      if (!args.id) throw new LocalizedError("cli.task_id_required", {}, "invalid-args");
+      let n = 0;
+      for (const s of listSessions()) {
+        if (!(s.thread_id ?? "").startsWith("system:tasks:")) continue;
+        if (caller.agentGroupId && s.agent_group_id !== caller.agentGroupId) continue;
+        const inbound = openInboundDb(inboundDbPath(s.agent_group_id, s.id));
+        try {
+          n += inbound
+            .prepare("UPDATE messages_in SET status = 'pending' WHERE kind = 'task' AND status = 'paused' AND (series_id = ? OR id = ?)")
+            .run(args.id, args.id).changes;
+        } finally {
+          inbound.close();
+        }
+      }
+      return { resumed: n };
+    },
+  });
+
+  registerCommand({
+    resource: "tasks",
+    verb: "delete",
+    scope: "agent-group",
+    agentVisible: true,
+    handler: (args, caller) => {
+      if (!args.id) throw new LocalizedError("cli.task_id_required", {}, "invalid-args");
+      let n = 0;
+      for (const s of listSessions()) {
+        if (!(s.thread_id ?? "").startsWith("system:tasks:")) continue;
+        if (caller.agentGroupId && s.agent_group_id !== caller.agentGroupId) continue;
+        const inbound = openInboundDb(inboundDbPath(s.agent_group_id, s.id));
+        try {
+          n += inbound
+            .prepare("DELETE FROM messages_in WHERE kind = 'task' AND (series_id = ? OR id = ?)")
+            .run(args.id, args.id).changes;
+        } finally {
+          inbound.close();
+        }
+      }
+      return { deleted: n };
+    },
+  });
+
   // ---- approvals：list + resolve（审批闭环入口） ----
   registerCrudResource("approvals", {
     table: "pending_approvals",
