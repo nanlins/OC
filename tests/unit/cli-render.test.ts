@@ -24,6 +24,16 @@ describe("cli render", () => {
     expect(out[1]).toContain("第二行");
   });
 
+  it("chat 多段：仅首行 agent 前缀，后续段落缩进对齐，空行不补（阶段 12 碎碎念修复）", () => {
+    const out = renderFrame({ kind: "chat", text: "标题\n\n第一段\n第二段" });
+    expect(out).toHaveLength(4);
+    expect(out[0]).toContain("agent"); // 首行一次前缀
+    expect(out[1]).toBe(""); // 空行无前缀无缩进
+    expect(out[2]).toContain("第一段");
+    expect(out[2]).not.toContain("agent"); // 后续行不重复 agent
+    expect(out[3]).not.toContain("agent");
+  });
+
   it("end 帧返回空行（提示符由调用方控制）", () => {
     expect(renderFrame({ kind: "end" })).toEqual([]);
   });
