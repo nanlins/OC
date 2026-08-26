@@ -59,9 +59,26 @@ function renderStatusBar(): void {
   write(kleur.inverse(" OC chat · " + (connected ? "就绪（输入 /help 看命令）" : "连接中…") + " ") + "\n");
 }
 
-/** 清掉当前输入行（光标回行首 + 擦除整行），供发送/消息插入前调用 */
+/** 计算输入行（含 "› " 提示符）在终端折成几行 */
+function inputLineCount(): number {
+  const cols = process.stdout.columns || 80;
+  const width = inputBuf.length + 2; // "› " 视觉宽度约 2
+  return Math.max(1, Math.ceil(width / cols));
+}
+
+/** 清掉当前输入行（含折行）：上移到输入起始行，逐行擦除后回到行首 */
 function clearInputLine(): void {
-  write("\r\x1b[2K");
+  const n = inputLineCount();
+  if (n <= 1) {
+    write("\r\x1b[2K");
+    return;
+  }
+  write(`\x1b[${n - 1}A`); // 上移到输入第一行
+  for (let i = 0; i < n; i++) {
+    write("\x1b[2K");
+    if (i < n - 1) write("\x1b[1B");
+  }
+  write("\r");
 }
 
 /**
