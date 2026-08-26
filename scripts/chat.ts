@@ -27,6 +27,7 @@ import {
   renderFrame,
   stripMarkdown,
   AGENT_PREFIX,
+  AGENT_INDENT,
   type CliFrame,
 } from "../src/channels/cli-render.js";
 import { DATA_DIR } from "../src/config.js";
@@ -82,10 +83,11 @@ function renderStatusBar(): void {
   write(kleur.inverse(" OC chat · " + (connected ? "就绪（输入 /help 看命令）" : "连接中…") + " ") + "\n");
 }
 
-/** 计算输入行（含 "› " 提示符）在终端折成几行 */
+/** 计算输入行（含 "› " 提示符）在终端折成几行。
+ *  阶段 12 实测修复：必须按 displayWidth（中文占 2 列）而非字符数——否则清屏行数不够，粘贴长中文内容残留叠加。 */
 function inputLineCount(): number {
   const cols = process.stdout.columns || 80;
-  const width = inputBuf.length + 2; // "› " 视觉宽度约 2
+  const width = displayWidth(inputBuf) + 2; // "› " 视觉宽度约 2
   return Math.max(1, Math.ceil(width / cols));
 }
 
@@ -106,7 +108,8 @@ function clearInputLine(count?: number): void {
 
 /**
  * 打字机：消费 stripMarkdown 纯文本，按 4 字符块输出（绝不切片 ANSI）。
- * 每个换行符后立即补 agent 前缀（块内换行同样处理），保证多段 Markdown 每行前缀正确。
+ * 前缀策略（阶段 12 实测修复，opencode 风格）：消息首行补一次 "agent"，
+ * 后续段落等宽缩进对齐（AGENT_INDENT），空行不补——消除 "agent agent" 碎碎念。
  * Ctrl+C 跳过剩余；非交互环境整段直出；onDone 在结束（含跳过）时回调。
  */
 function prefixNewlines(text: string, from: number): string {
@@ -114,7 +117,7 @@ function prefixNewlines(text: string, from: number): string {
   for (let i = from; i < text.length; i++) {
     const ch = text[i]!;
     out += ch;
-    if (ch === "\n" && i + 1 < text.length) out += AGENT_PREFIX + " ";
+    if (ch === "\n" && i + 1 < text.length && text[i + 1] !== "\n") out += AGENT_INDENT;
   }
   return out;
 }
@@ -132,7 +135,7 @@ function typewriterPrint(rawText: string, onDone: () => void): void {
   let pos = 0;
   const step = () => {
     if (typewriterSkip) {
-      // 跳过：剩余部分整段直出（含换行前缀，无乱码）
+      // 跳过：剩余部分整段直出（含缩进，无乱码）
       write(prefixNewlines(text, pos));
       write("\n");
       typewriterActive = false;
@@ -145,16 +148,18 @@ function typewriterPrint(rawText: string, onDone: () => void): void {
       onDone();
       return;
     }
-    // 块开始处若为行首则补前缀
-    if (pos === 0 || text[pos - 1] === "\n") {
+    // 块开始处：消息首行补 agent 前缀；换行后的非空行补缩进
+    if (pos === 0) {
       write(AGENT_PREFIX + " ");
+    } else if (text[pos - 1] === "\n" && text[pos] !== "\n") {
+      write(AGENT_INDENT);
     }
-    // 输出 chunk；块内每个换行符后补前缀（阶段 12 实测修复：Markdown 多段每行前缀正确）
+    // 输出 chunk；块内换行后补缩进（空行不补）
     let out = "";
     for (let i = 0; i < CHUNK && pos + i < text.length; i++) {
       const ch = text[pos + i]!;
       out += ch;
-      if (ch === "\n" && pos + i + 1 < text.length) out += AGENT_PREFIX + " ";
+      if (ch === "\n" && pos + i + 1 < text.length && text[pos + i + 1] !== "\n") out += AGENT_INDENT;
     }
     write(out);
     pos += CHUNK;
@@ -429,18 +434,20 @@ if (!interactive) {
         return;
       }
 
-      // 阶段 12：左右键移动光标（可编辑已输入内容）
+      // 阶段 12：左右键移动光标（按字符显示宽度移动，中文占 2 列不再卡住）
       if (key.name === "left") {
         if (cursorPos > 0) {
           cursorPos -= 1;
-          write("\x1b[1D");
+          const w = displayWidth(inputBuf[cursorPos] ?? "");
+          write(`\x1b[${w}D`);
         }
         return;
       }
       if (key.name === "right") {
         if (cursorPos < inputBuf.length) {
+          const w = displayWidth(inputBuf[cursorPos] ?? "");
           cursorPos += 1;
-          write("\x1b[1C");
+          write(`\x1b[${w}C`);
         }
         return;
       }
