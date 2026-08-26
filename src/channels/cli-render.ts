@@ -19,6 +19,8 @@ export type CliFrame =
 
 export const USER_PREFIX = kleur.blue(" you  ");
 export const AGENT_PREFIX = kleur.green(" agent");
+/** 与 " agent" 显示等宽的空格缩进：消息后续段落对齐用（阶段 12 实测修复：不再每行重复 agent 前缀） */
+export const AGENT_INDENT = " ".repeat(6);
 export const TOOL_PREFIX = kleur.yellow("  ▸  ");
 export const SYSTEM_PREFIX = kleur.gray("  ·  ");
 export const ERROR_PREFIX = kleur.red("  !  ");
@@ -38,10 +40,17 @@ export function renderMarkdownInline(text: string): string {
     .replace(/\*\*([^*]+)\*\*/g, (_m, b: string) => kleur.bold(b));
 }
 
-/** 助手消息：agent 前缀 + 内容（调用方做打字机分片，本函数只渲染单行内容） */
+/** 助手消息：首行 agent 前缀一次，后续段落等宽缩进对齐（opencode 风格；空行不缩进）。
+ *  阶段 12 实测修复：此前每行重复 agent 前缀导致 "agent agent" 碎碎念。 */
 export function renderChat(text: string): string {
   const lines = text.split(/\r?\n/);
-  return lines.map((line) => `${AGENT_PREFIX} ${renderMarkdownInline(line)}`).join("\n");
+  return lines
+    .map((line, i) => {
+      if (i === 0) return `${AGENT_PREFIX} ${renderMarkdownInline(line)}`;
+      if (line === "") return "";
+      return `${AGENT_INDENT}${renderMarkdownInline(line)}`;
+    })
+    .join("\n");
 }
 
 /**
