@@ -12,12 +12,15 @@ import { ensureContainerConfig, updateContainerConfig } from "../src/db/containe
 import { initDb, closeDb, getDb, hasTable } from "../src/db/connection.js";
 import { runMigrations } from "../src/db/migrations/index.js";
 import { migration001 } from "../src/db/migrations/001-initial.js";
-import { CENTRAL_DB_PATH } from "../src/config.js";
+import { CENTRAL_DB_PATH, DATA_DIR } from "../src/config.js";
+import { mkdirSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 
 const DEMO_GROUP = "demo";
 const DEMO_NAME = "Demo";
 
+// 阶段 12 实测修复：克隆后全新环境 data/ 目录不存在——先建目录再开库（否则 better-sqlite3 报 Cannot open database）
+mkdirSync(DATA_DIR, { recursive: true });
 initDb(CENTRAL_DB_PATH);
 if (!hasTable("agent_groups")) {
   runMigrations(getDb(), [migration001]);
