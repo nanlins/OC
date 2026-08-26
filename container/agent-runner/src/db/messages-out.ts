@@ -17,6 +17,8 @@ export interface WriteMessageOut {
   content: string;
   /** 交互操作语义：edit/reaction（docs/07：交互操作走 messages_out operation 字段） */
   operation?: string | null;
+  /** 阶段 12：流式结束标记（=1 表示该消息是流式链的最终完整版，CLI 通道据此立即冲刷合并缓冲） */
+  streamFinal?: boolean;
   inReplyTo?: string | null;
   deliverAfter?: string | null;
   recurrence?: string | null;
@@ -37,8 +39,8 @@ export function writeMessageOut(msg: WriteMessageOut): number {
   const seq = nextOddSeq(db);
   runNamed(
     db.prepare(
-      `INSERT INTO messages_out (id, seq, in_reply_to, timestamp, deliver_after, recurrence, kind, operation, platform_id, channel_type, thread_id, content)
-       VALUES ($id, $seq, $inReplyTo, $now, $deliverAfter, $recurrence, $kind, $operation, $platformId, $channelType, $threadId, $content)`,
+      `INSERT INTO messages_out (id, seq, in_reply_to, timestamp, deliver_after, recurrence, kind, operation, stream_final, platform_id, channel_type, thread_id, content)
+       VALUES ($id, $seq, $inReplyTo, $now, $deliverAfter, $recurrence, $kind, $operation, $streamFinal, $platformId, $channelType, $threadId, $content)`,
     ),
     {
       $id: msg.id,
@@ -49,6 +51,7 @@ export function writeMessageOut(msg: WriteMessageOut): number {
       $recurrence: msg.recurrence ?? null,
       $kind: msg.kind,
       $operation: msg.operation ?? null,
+      $streamFinal: msg.streamFinal ? 1 : 0,
       $platformId: msg.platformId ?? null,
       $channelType: msg.channelType ?? null,
       $threadId: msg.threadId ?? null,
