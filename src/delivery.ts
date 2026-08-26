@@ -64,6 +64,7 @@ async function deliverViaAdapter(
     operation: out.operation ?? null, // P1-5 修复：operation 透传
     editTarget, // fix-plan 流式：编辑目标
     inReplyTo: out.in_reply_to ?? null, // 阶段 12：流式消息链 id（CLI 客户端合并增量）
+    streamFinal: (out.stream_final ?? 0) === 1, // 阶段 12：流式结束标记（CLI 通道立即冲刷）
     // 阶段 12 CLI TUI：会话元数据帧（仅 CLI 通道消费；其他通道忽略未知字段）
     meta:
       key === "cli"
@@ -135,14 +136,21 @@ export async function deliverSessionMessages(session: Session): Promise<number> 
     // P1-3 修复：open 移入 try，失败不毒化 inflight 去重表
     inbound = openInboundDb(inPath);
     // 阶段 12 实测修复：容器崩溃残留 hot journal 时，只读打开会因"恢复需写"抛 readonly。
-    // 此时容器必已死（journal 只在上次写事务未提交时残留）——用 RW 打开恢复并读取，安全（无并发写者）。
+    // 恢复可能发生在 open 或首个 SELECT 两个时机——两处都回退 RW（此时容器必已死，无并发写者，安全）。
     try {
       outbound = openOutboundDb(outPath);
     } catch {
       outbound = openOutboundDbRw(outPath);
     }
     const now = new Date().toISOString();
-    const due = getDueOutboundMessages(outbound, now);
+    let due: MessageOut[];
+    try {
+      due = getDueOutboundMessages(outbound, now);
+    } catch {
+      outbound.close();
+      outbound = openOutboundDbRw(outPath);
+      due = getDueOutboundMessages(outbound, now);
+    }
     const doneIds = getDeliveredIds(inbound);
     for (const out of due) {
       if (doneIds.has(out.id)) continue;
