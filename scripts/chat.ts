@@ -83,9 +83,19 @@ function clearInputLine(): void {
 
 /**
  * 打字机：消费 stripMarkdown 纯文本，按 4 字符块输出（绝不切片 ANSI）。
- * 行首打印一次 agent 前缀；Ctrl+C 跳过剩余；非交互环境整段直出。
- * onDone 在打字机结束（含跳过）时回调，由帧队列驱动下一条消息。
+ * 每个换行符后立即补 agent 前缀（块内换行同样处理），保证多段 Markdown 每行前缀正确。
+ * Ctrl+C 跳过剩余；非交互环境整段直出；onDone 在结束（含跳过）时回调。
  */
+function prefixNewlines(text: string, from: number): string {
+  let out = "";
+  for (let i = from; i < text.length; i++) {
+    const ch = text[i]!;
+    out += ch;
+    if (ch === "\n" && i + 1 < text.length) out += AGENT_PREFIX + " ";
+  }
+  return out;
+}
+
 function typewriterPrint(rawText: string, onDone: () => void): void {
   const text = stripMarkdown(rawText);
   if (!interactive) {
@@ -99,8 +109,8 @@ function typewriterPrint(rawText: string, onDone: () => void): void {
   let pos = 0;
   const step = () => {
     if (typewriterSkip) {
-      // 跳过：整段直出（此时屏幕上可能已有部分块——先补全剩余，不做清行重绘，保证无乱码）
-      write(text.slice(pos));
+      // 跳过：剩余部分整段直出（含换行前缀，无乱码）
+      write(prefixNewlines(text, pos));
       write("\n");
       typewriterActive = false;
       onDone();
@@ -112,12 +122,18 @@ function typewriterPrint(rawText: string, onDone: () => void): void {
       onDone();
       return;
     }
-    // 行首补 agent 前缀
+    // 块开始处若为行首则补前缀
     if (pos === 0 || text[pos - 1] === "\n") {
       write(AGENT_PREFIX + " ");
     }
-    const chunk = text.slice(pos, pos + CHUNK);
-    write(chunk);
+    // 输出 chunk；块内每个换行符后补前缀（阶段 12 实测修复：Markdown 多段每行前缀正确）
+    let out = "";
+    for (let i = 0; i < CHUNK && pos + i < text.length; i++) {
+      const ch = text[pos + i]!;
+      out += ch;
+      if (ch === "\n" && pos + i + 1 < text.length) out += AGENT_PREFIX + " ";
+    }
+    write(out);
     pos += CHUNK;
     setTimeout(step, 7);
   };
