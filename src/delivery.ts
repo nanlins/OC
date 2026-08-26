@@ -63,6 +63,7 @@ async function deliverViaAdapter(
     files,
     operation: out.operation ?? null, // P1-5 修复：operation 透传
     editTarget, // fix-plan 流式：编辑目标
+    inReplyTo: out.in_reply_to ?? null, // 阶段 12：流式消息链 id（CLI 客户端合并增量）
     // 阶段 12 CLI TUI：会话元数据帧（仅 CLI 通道消费；其他通道忽略未知字段）
     meta:
       key === "cli"
