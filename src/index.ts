@@ -33,6 +33,12 @@ import "./host-sweep.js"; // 副作用：巡检注册到 host-lifecycle（阶段
 import "./delivery.js"; // 副作用：投递轮询注册到 host-lifecycle（阶段 5，P0 修复）
 import "./cli/socket-server.js"; // 副作用：CLI 控制 socket 注册到 host-lifecycle（阶段 7）
 import "./web/server.js"; // 副作用：Web 管理控制台注册到 host-lifecycle（阶段 9）
+import { onHostStart, onHostShutdown } from "./host-lifecycle.js";
+import { startLlmProxy, stopLlmProxy } from "./llm-proxy.js";
+
+// 阶段 12：LLM 密钥代理（OneCLI 网关简化版）——容器 LLM 请求经代理由主机注入密钥
+onHostStart("llm-proxy", () => startLlmProxy());
+onHostShutdown("llm-proxy", () => stopLlmProxy());
 
 export async function main(): Promise<void> {
   // 0. 熔断退避（运行在 initDb 之前）
