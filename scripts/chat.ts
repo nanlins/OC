@@ -117,6 +117,52 @@ function typewriterPrint(rawText: string, onDone: () => void): void {
 const frameQueue: CliFrame[] = [];
 let messageBusy = false; // 当前正在打字机渲染一条 chat 消息
 
+/**
+ * 流式合并（阶段 12 二次修复）：poll-loop 对同一回复写多条 outbound（首增量 + 每 400ms edit + 最终 edit），
+ * 全部带相同 inReplyTo。CLI 客户端以 inReplyTo 为键合并：同一消息链的帧只保留最新文本，
+ * 500ms 无新帧后一次性渲染 → 只显示最终完整回复（中间 edit 不闪现）。
+ */
+const PENDING_FLUSH_MS = 500;
+let pendingGroup: { key: string; meta: CliFrame | null; text: string } | null = null;
+let pendingTimer: NodeJS.Timeout | null = null;
+
+let pendingMeta: CliFrame | null = null;
+
+function queueChatFrame(frame: CliFrame & { kind: "chat" }): void {
+  const key = frame.inReplyTo ?? `m-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+  // 同链更新：沿用已存的 meta；新链：消费暂存的 meta（若 key 匹配）
+  let meta: CliFrame | null = null;
+  if (pendingGroup && pendingGroup.key === key) {
+    meta = pendingGroup.meta;
+  } else if (pendingMeta && (pendingMeta.inReplyTo ?? null) === frame.inReplyTo) {
+    meta = pendingMeta;
+    pendingMeta = null;
+  }
+  pendingGroup = { key, meta, text: frame.text };
+  if (pendingTimer) clearTimeout(pendingTimer);
+  pendingTimer = setTimeout(flushPendingGroup, PENDING_FLUSH_MS);
+}
+
+function queueMetaFrame(frame: CliFrame & { kind: "meta" }): void {
+  const key = frame.inReplyTo ?? null;
+  // meta 属于其后的 chat：同链 chat 未达则暂存，chat 到达时消费
+  if (pendingGroup && pendingGroup.key === key) {
+    pendingGroup.meta = frame;
+    return;
+  }
+  pendingMeta = frame;
+}
+
+function flushPendingGroup(): void {
+  if (pendingTimer) clearTimeout(pendingTimer);
+  pendingTimer = null;
+  if (!pendingGroup) return;
+  const { meta, text } = pendingGroup;
+  pendingGroup = null;
+  if (meta) enqueueFrame(meta);
+  enqueueFrame({ kind: "chat", text });
+}
+
 function enqueueFrame(frame: CliFrame): void {
   frameQueue.push(frame);
   drainQueue();
@@ -156,6 +202,23 @@ function drainQueue(): void {
 }
 
 function handleFrame(frame: CliFrame): void {
+  if (frame.kind === "chat") {
+    queueChatFrame(frame);
+    return;
+  }
+  if (frame.kind === "meta") {
+    queueMetaFrame(frame);
+    return;
+  }
+  if (frame.kind === "end") {
+    // end 表示该消息链投递完毕；若 pending 同链未 flush，立即 flush（不等 500ms）
+    if (pendingGroup) {
+      const sameKey = frame.inReplyTo !== null && pendingGroup.key === frame.inReplyTo;
+      if (sameKey) flushPendingGroup();
+    }
+    enqueueFrame(frame);
+    return;
+  }
   enqueueFrame(frame);
 }
 
@@ -180,7 +243,7 @@ socket.on("data", (chunk) => {
     try {
       handleFrame(JSON.parse(line) as CliFrame);
     } catch {
-      enqueueFrame({ kind: "chat", text: line }); // 纯文本兜底（老主机）
+      queueChatFrame({ kind: "chat", text: line }); // 纯文本兜底（老主机）
     }
   }
 });
@@ -215,9 +278,10 @@ function sendUserMessage(text: string): void {
     write("\n");
     process.exit(0);
   }
-  // 用户消息回显：清输入行 → 蓝色 you 前缀 → 时间线
+  // 用户消息回显：清输入行 → 蓝色 you 前缀 → 时间线（内容单行化，防粘贴换行/折行错乱）
   clearInputLine();
-  write(kleur.blue(" you  ") + stripMarkdown(cmd) + "\n");
+  const oneLine = stripMarkdown(cmd).replace(/\s+/g, " ");
+  write(kleur.blue(" you  ") + oneLine + "\n");
   write(kleur.gray(" " + "─".repeat(8) + " " + new Date().toLocaleTimeString()) + "\n");
   socket.write(JSON.stringify({ text: cmd }) + "\n");
 }
