@@ -30,8 +30,10 @@ export class OpenAICompatProvider implements AgentProvider {
     this.client =
       client ??
       new OpenAI({
-        apiKey: process.env.OPENAI_API_KEY ?? "missing",
-        baseURL: process.env.OPENAI_BASE_URL ?? undefined,
+        // 阶段 12（密钥网关简化版）：OC_LLM_PROXY_URL 指向宿主代理（密钥由主机注入，不进容器）；
+        // 未配置代理时回退直连 OPENAI_BASE_URL（旧行为）
+        apiKey: process.env.OPENAI_API_KEY ?? "proxy",
+        baseURL: process.env.OC_LLM_PROXY_URL ?? process.env.OPENAI_BASE_URL ?? undefined,
       });
     this.model = config.model ?? "gpt-4o-mini";
     this.ctxFactory = ctxFactory;
