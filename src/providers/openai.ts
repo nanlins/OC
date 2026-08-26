@@ -10,17 +10,14 @@
  *
  * 修改记录：2026-08-13 创建（收束期补 key 接线，支撑端到端实测）
  */
-import { readEnvFile } from "../env.js";
-import { ENV_PATH } from "../config.js";
+import { LLM_PROXY_PORT } from "../llm-proxy.js";
 import { registerProviderContainerConfig } from "./provider-container-registry.js";
 
 registerProviderContainerConfig("openai", () => {
-  const dotenv = readEnvFile(["OPENAI_API_KEY", "OPENAI_BASE_URL"], ENV_PATH);
+  // 阶段 12（密钥网关简化版）：容器不再注入真实密钥——注入宿主代理地址，
+  // 容器 LLM 请求经 /llm-proxy 由主机注入密钥转发（密钥永不进容器，对齐 nanoclaw OneCLI 语义）。
   const env: Record<string, string> = {};
-  const key = dotenv.OPENAI_API_KEY || process.env.OPENAI_API_KEY || "";
-  const base = dotenv.OPENAI_BASE_URL || process.env.OPENAI_BASE_URL || "";
-  if (key) env.OPENAI_API_KEY = key;
-  if (base) env.OPENAI_BASE_URL = base;
+  env.OC_LLM_PROXY_URL = `http://host.docker.internal:${LLM_PROXY_PORT}/llm-proxy`;
   return { mounts: [], env };
 });
 
