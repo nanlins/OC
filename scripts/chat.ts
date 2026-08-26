@@ -44,10 +44,33 @@ let connected = false;
 
 // ---- 输入状态 ----
 let inputBuf = "";
+let cursorPos = 0; // 光标在 inputBuf 中的字符位置（阶段 12：左右键编辑）
 const history: string[] = [];
 let historyIdx = -1;
 let typewriterActive = false;
 let typewriterSkip = false;
+
+/** 终端显示宽度：ASCII 1 列，CJK/全角 2 列（光标定位用） */
+function displayWidth(s: string): number {
+  let w = 0;
+  for (const ch of s) {
+    w += /[\u1100-\u115f\u2e80-\uff60\uffe0-\uffe6]/.test(ch) ? 2 : 1;
+  }
+  return w;
+}
+
+/**
+ * 输入编辑提交：先清旧输入行（按旧内容行数），再更新缓冲区并重绘，最后光标定位。
+ * 所有输入编辑（插入/删除/历史导航）统一走此函数（阶段 12：左右键编辑核心）。
+ */
+function applyInputEdit(newBuf: string, newCursor: number): void {
+  clearInputLine(); // 旧 inputBuf 行数
+  inputBuf = newBuf;
+  cursorPos = newCursor;
+  write(kleur.dim("›") + " " + inputBuf);
+  const back = displayWidth(inputBuf.slice(cursorPos));
+  if (back > 0) write(`\x1b[${back}D`);
+}
 
 // ---- 渲染 ----
 function redrawPrompt(): void {
@@ -66,9 +89,9 @@ function inputLineCount(): number {
   return Math.max(1, Math.ceil(width / cols));
 }
 
-/** 清掉当前输入行（含折行）：上移到输入起始行，逐行擦除后回到行首 */
-function clearInputLine(): void {
-  const n = inputLineCount();
+/** 清掉当前输入行（含折行）：上移到输入起始行，逐行擦除后回到行首；count 可选（重绘时传旧内容行数） */
+function clearInputLine(count?: number): void {
+  const n = count ?? inputLineCount();
   if (n <= 1) {
     write("\r\x1b[2K");
     return;
@@ -311,11 +334,9 @@ function sendUserMessage(text: string): void {
     write("\n");
     process.exit(0);
   }
-  // 用户消息回显：清输入行 → 蓝色 you 前缀 → 时间线（内容单行化，防粘贴换行/折行错乱）
-  clearInputLine();
-  const oneLine = stripMarkdown(cmd).replace(/\s+/g, " ");
-  write(kleur.blue(" you  ") + oneLine + "\n");
-  write(kleur.gray(" " + "─".repeat(8) + " " + new Date().toLocaleTimeString()) + "\n");
+  // 阶段 12 实测修复：不再重复回显 "you xxx" + 时间线——输入行（› 问题）本身即用户消息，
+  // 换行后 agent 回复紧跟（用户要求"› 后给出问题就回答即可"）
+  write("\n");
   socket.write(JSON.stringify({ text: cmd }) + "\n");
 }
 
@@ -375,6 +396,7 @@ if (!interactive) {
       if (key.name === "return" || key.name === "enter") {
         const text = inputBuf;
         inputBuf = "";
+        cursorPos = 0;
         historyIdx = -1;
         if (text.trim()) {
           history.push(text);
@@ -388,10 +410,8 @@ if (!interactive) {
         if (historyIdx === -1) historyIdx = history.length - 1;
         else if (historyIdx > 0) historyIdx--;
         if (historyIdx >= 0) {
-          clearInputLine();
-          write(kleur.dim("›") + " ");
-          inputBuf = history[historyIdx] ?? "";
-          write(inputBuf);
+          const h = history[historyIdx] ?? "";
+          applyInputEdit(h, h.length);
         }
         return;
       }
@@ -399,14 +419,28 @@ if (!interactive) {
       if (key.name === "down") {
         if (historyIdx === -1) return;
         historyIdx++;
-        clearInputLine();
-        write(kleur.dim("›") + " ");
         if (historyIdx >= history.length) {
           historyIdx = -1;
-          inputBuf = "";
+          applyInputEdit("", 0);
         } else {
-          inputBuf = history[historyIdx] ?? "";
-          write(inputBuf);
+          const h = history[historyIdx] ?? "";
+          applyInputEdit(h, h.length);
+        }
+        return;
+      }
+
+      // 阶段 12：左右键移动光标（可编辑已输入内容）
+      if (key.name === "left") {
+        if (cursorPos > 0) {
+          cursorPos -= 1;
+          write("\x1b[1D");
+        }
+        return;
+      }
+      if (key.name === "right") {
+        if (cursorPos < inputBuf.length) {
+          cursorPos += 1;
+          write("\x1b[1C");
         }
         return;
       }
@@ -427,16 +461,15 @@ if (!interactive) {
       }
 
       if (key.name === "backspace") {
-        if (inputBuf.length > 0) {
-          inputBuf = inputBuf.slice(0, -1);
-          write("\b \b");
+        if (cursorPos > 0) {
+          applyInputEdit(inputBuf.slice(0, cursorPos - 1) + inputBuf.slice(cursorPos), cursorPos - 1);
         }
         return;
       }
 
       if (key.sequence && key.sequence.length === 1 && key.sequence >= " ") {
-        inputBuf += key.sequence;
-        write(key.sequence);
+        // 阶段 12：在光标处插入（不再只追加行尾）
+        applyInputEdit(inputBuf.slice(0, cursorPos) + key.sequence + inputBuf.slice(cursorPos), cursorPos + 1);
       }
     },
   );
