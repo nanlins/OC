@@ -52,54 +52,73 @@ function countFiresIn24h(cron: string, tz: string): number {
   return n;
 }
 
+/**
+ * 阶段 12（tasks 全 CRUD 补齐）：共享任务创建内核。
+ * 由 schedule_task 投递动作与 oc tasks create 命令共同调用；校验/限频/写任务行三合一。
+ */
+export function createTaskInternal(
+  agentGroupId: string,
+  opts: { message?: string; cron?: string | null; processAfter?: string | null },
+): { seriesId: string; next?: string } {
+  const tz = resolveGroupTimezone(agentGroupId);
+  const seriesId = randomUUID();
+  const taskSession = resolveSession({
+    agentGroupId,
+    messagingGroupId: null,
+    threadId: taskThreadId(seriesId),
+    sessionMode: "per-thread",
+  });
+  const inbound = openInboundDb(inboundDbPath(taskSession.agent_group_id, taskSession.id));
+  try {
+    if (opts.cron) {
+      const err = validateCron(opts.cron, tz);
+      if (err) throw new Error(err);
+      // P1 修复（ai-inspector）：预测式限频——向未来模拟 24h 触发次数，>MAX_DAILY_FIRES 拒绝
+      if (countFiresIn24h(opts.cron, tz) > MAX_DAILY_FIRES) {
+        throw new Error(
+          "recurrence limit exceeded (>4 fires/day predicted); add a pre-task script gate or use a coarser cron",
+        );
+      }
+      const next = nextCronIso(opts.cron, tz, new Date());
+      writeSessionMessage(taskSession, {
+        id: randomUUID(),
+        kind: "task",
+        content: opts.message ?? "",
+        recurrence: opts.cron,
+        seriesId,
+        processAfter: next,
+        trigger: 1,
+      });
+      return { seriesId, next };
+    }
+    if (opts.processAfter) {
+      writeSessionMessage(taskSession, {
+        id: randomUUID(),
+        kind: "task",
+        content: opts.message ?? "",
+        seriesId,
+        processAfter: opts.processAfter,
+        trigger: 1,
+      });
+      return { seriesId, next: opts.processAfter };
+    }
+    throw new Error("schedule_task requires cron or process_after");
+  } finally {
+    inbound.close();
+  }
+}
+
 registerDeliveryAction("schedule_task", {
   guard: unguarded("agent scheduling is rate-limited, not approval-gated"),
   handler: async (out: MessageOut, session: Session) => {
     const parsed = JSON.parse(out.content) as { message?: string; cron?: string | null; process_after?: string | null };
-    const tz = resolveGroupTimezone(session.agent_group_id);
-    const seriesId = randomUUID();
-    const taskSession = resolveSession({
-      agentGroupId: session.agent_group_id,
-      messagingGroupId: null,
-      threadId: taskThreadId(seriesId),
-      sessionMode: "per-thread",
+    // 阶段 12：复用共享创建内核（与 oc tasks create 同源）
+    createTaskInternal(session.agent_group_id, {
+      message: parsed.message,
+      cron: parsed.cron,
+      processAfter: parsed.process_after,
     });
-    const inbound = openInboundDb(inboundDbPath(taskSession.agent_group_id, taskSession.id));
-    try {
-      if (parsed.cron) {
-        const err = validateCron(parsed.cron, tz);
-        if (err) throw new Error(err);
-        // P1 修复（ai-inspector）：预测式限频——向未来模拟 24h 触发次数，>MAX_DAILY_FIRES 拒绝
-        if (countFiresIn24h(parsed.cron, tz) > MAX_DAILY_FIRES) {
-          throw new Error(
-            "recurrence limit exceeded (>4 fires/day predicted); add a pre-task script gate or use a coarser cron",
-          );
-        }
-        writeSessionMessage(taskSession, {
-          id: randomUUID(),
-          kind: "task",
-          content: parsed.message ?? "",
-          recurrence: parsed.cron,
-          seriesId,
-          processAfter: nextCronIso(parsed.cron, tz, new Date()),
-          trigger: 1,
-        });
-      } else if (parsed.process_after) {
-        writeSessionMessage(taskSession, {
-          id: randomUUID(),
-          kind: "task",
-          content: parsed.message ?? "",
-          seriesId,
-          processAfter: parsed.process_after,
-          trigger: 1,
-        });
-      } else {
-        throw new Error("schedule_task requires cron or process_after");
-      }
-    } finally {
-      inbound.close();
-    }
-    log.info(`task scheduled: series=${seriesId}`);
+    log.info(`task scheduled`);
   },
 });
 
