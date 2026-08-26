@@ -229,6 +229,18 @@ async function spawnContainer(session: Session): Promise<boolean> {
     }
     const args = buildContainerArgs(mounts, name, config, provider.env, envFilePath);
 
+    // 阶段 12 实测修复：上次容器崩溃/被杀会留下 outbound.db 的 hot journal（DELETE journal 跨挂载恢复会触发
+    // readonly/locked 连锁故障）。spawn 前清理残留 journal/wal/shm——崩溃恢复语义：未提交事务本就丢弃。
+    try {
+      const sDir = sessionDir(session.agent_group_id, session.id);
+      for (const suffix of ["-journal", "-wal", "-shm"]) {
+        rmSync(join(sDir, `outbound.db${suffix}`), { force: true });
+        rmSync(join(sDir, `inbound.db${suffix}`), { force: true });
+      }
+    } catch {
+      /* 清理失败不阻断 spawn（下一轮再试） */
+    }
+
     // 删除孤儿心跳文件（否则 sweep 用陈旧 mtime 秒杀新容器）
     try {
       rmSync(heartbeatPath(session.agent_group_id, session.id), { force: true });
