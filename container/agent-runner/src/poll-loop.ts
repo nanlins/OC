@@ -169,26 +169,27 @@ export async function runPollLoop(cfg: PollLoopConfig): Promise<void> {
     }
 
     if (liveMessageId !== null) {
-      // 已流式：就完整结果补一条最终 edit（与末次增量不同才发）
+      // 已流式：补一条最终 edit（阶段 12：streamFinal 标记流式结束；恒写，即使内容与末次增量相同，
+      // 保证 CLI 通道总能收到流结束信号立即冲刷，而非等 3s 时间窗口）
       const finalText = hadError ? `! ${resultText}` : resultText;
-      if (finalText !== streamedContent) {
-        writeMessageOut({
-          id: randomUUID(),
-          kind: "chat",
-          content: finalText,
-          operation: "edit",
-          channelType: routing.channelType,
-          platformId: routing.platformId,
-          threadId: routing.threadId,
-          inReplyTo: liveMessageId,
-        });
-      }
+      writeMessageOut({
+        id: randomUUID(),
+        kind: "chat",
+        content: finalText,
+        operation: "edit",
+        streamFinal: true,
+        channelType: routing.channelType,
+        platformId: routing.platformId,
+        threadId: routing.threadId,
+        inReplyTo: liveMessageId,
+      });
     } else {
-      // 非流式 provider：按原逻辑一次性写结果
+      // 非流式 provider：按原逻辑一次性写结果（本身即最终版）
       writeMessageOut({
         id: randomUUID(),
         kind: "chat",
         content: hadError ? `! ${resultText}` : resultText,
+        streamFinal: true,
         channelType: routing.channelType,
         platformId: routing.platformId,
         threadId: routing.threadId,
