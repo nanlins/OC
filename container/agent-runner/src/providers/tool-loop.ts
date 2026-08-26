@@ -40,8 +40,8 @@ export async function executeToolCall(name: string, argsJson: string, ctx: ToolC
 }
 
 /** 预算护栏：防 Agent 无限打转（知识文档 4.2）。
- *  阶段 12 实测：10 轮对"读大文件+分析"场景过紧（分析 HTML 原型即触发熔断），放宽至 25。 */
-export const MAX_TOOL_ROUNDS = 25;
+ *  阶段 12 实测：10 轮对"读大文件+分析"过紧；25 轮仍不够（agent 装浏览器/补依赖场景烧轮数），放宽至 40。 */
+export const MAX_TOOL_ROUNDS = 40;
 
 /** P1-7 修复：工具结果截断上限（上下文窗口预算，知识文档 01） */
 export const TOOL_RESULT_MAX_CHARS = 24_000;
