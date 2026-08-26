@@ -156,6 +156,8 @@ export interface MessageOut {
   kind: MessageKind;
   /** 交互操作语义：edit/reaction（阶段 5 P1-5 补入投递桥） */
   operation: string | null;
+  /** 阶段 12：流式结束标记（=1 流式链最终完整版，CLI 通道立即冲刷合并缓冲）；旧库无此列，读取侧容错 */
+  stream_final?: number;
   platform_id: string | null;
   channel_type: string | null;
   thread_id: string | null;
