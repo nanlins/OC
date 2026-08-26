@@ -94,7 +94,12 @@ export function resolveSession(opts: {
   agentProvider?: string | null;
 }): Session {
   const existing = findSession(opts);
-  if (existing) return existing;
+  if (existing) {
+    // 阶段 12：命中旧会话也幂等 ensure（CREATE IF NOT EXISTS + ALTER 迁移补 stream_final 列），
+    // 否则旧会话库缺列，容器侧 INSERT 带 stream_final 会崩（实测 fatal: no column named stream_final）
+    initSessionFolder(existing);
+    return existing;
+  }
   const created = createSession({
     agentGroupId: opts.agentGroupId,
     messagingGroupId: opts.sessionMode === "agent-shared" ? null : (opts.messagingGroupId ?? null),
