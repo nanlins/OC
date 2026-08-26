@@ -24,6 +24,12 @@ export function cliSocketPath(): string {
   return process.platform === "win32" ? `\\\\.\\pipe\\oc-chat-${INSTALL_SLUG}` : join(DATA_DIR, "cli-chat.sock");
 }
 
+/** 阶段 12：chat 流式合并窗口（毫秒）；测试可注入 0 免等待 */
+let chatMergeMs = 2000;
+export function setChatMergeMsForTest(ms: number): void {
+  chatMergeMs = ms;
+}
+
 export const CLI_DEFAULTS: ChannelDefaults = {
   dm: { engageMode: "pattern", engagePattern: ".", threads: false, unknownSenderPolicy: "public" },
   group: { engageMode: "pattern", engagePattern: ".", threads: false, unknownSenderPolicy: "public" },
@@ -33,6 +39,14 @@ export const CLI_DEFAULTS: ChannelDefaults = {
 function createCliAdapter(): ChannelAdapter {
   let server: Server | null = null;
   const clients = new Set<Socket>();
+
+  // 阶段 12：服务端流式合并缓冲（chat 消息合并窗口）
+  let pendingChat: {
+    content: string;
+    meta: OutboundMessage["meta"] | null;
+    inReplyTo: string | null;
+    timer: NodeJS.Timeout;
+  } | null = null;
 
   const adapter: ChannelAdapter = {
     name: "cli",
@@ -117,31 +131,60 @@ function createCliAdapter(): ChannelAdapter {
 
     deliver: async (_platformId, _threadId, msg: OutboundMessage) => {
       // 阶段 12：多帧协议（meta 可选 → 消息 → end），行分隔向后兼容（老客户端逐行 JSON.parse 只读 text）
-      // inReplyTo：流式消息链 id（poll-loop 首条消息 id），CLI 客户端据此合并同一回复的 edit 增量
-      const lines: string[] = [];
-      if (msg.meta) {
+      const write = (m: OutboundMessage) => {
+        const lines: string[] = [];
+        if (m.meta) {
+          lines.push(
+            JSON.stringify({
+              kind: "meta",
+              agent: m.meta.agent ?? null,
+              model: m.meta.model ?? null,
+              provider: m.meta.provider ?? null,
+              inReplyTo: m.inReplyTo ?? null,
+            }),
+          );
+        }
         lines.push(
           JSON.stringify({
-            kind: "meta",
-            agent: msg.meta.agent ?? null,
-            model: msg.meta.model ?? null,
-            provider: msg.meta.provider ?? null,
-            inReplyTo: msg.inReplyTo ?? null,
+            kind: m.kind ?? "chat",
+            text: m.content,
+            operation: m.operation ?? null,
+            type: m.type ?? null,
+            inReplyTo: m.inReplyTo ?? null,
           }),
         );
+        lines.push(JSON.stringify({ kind: "end", inReplyTo: m.inReplyTo ?? null }));
+        const payload = lines.join("\n") + "\n";
+        for (const c of clients) c.write(payload);
+      };
+
+      // 流式合并（阶段 12 实测修复）：poll-loop 对同一回复写多条 outbound（首条片段 + 每 400ms 一条
+      // operation=edit + 最终 edit）。CLI 客户端无法可靠区分首条与 edit 链（inReplyTo 键不同），且投递间隔
+      // 1s 大于客户端 500ms 合并窗口 → 多段闪现。改为【服务端合并】：普通 chat 缓冲 CHAT_MERGE_MS，
+      // 期间到达的新 chat（edit）替换缓冲，超时才广播最新一条完整内容。客户端只收到一条，无多段。
+      if (msg.kind === "chat" && !msg.type) {
+        if (pendingChat) clearTimeout(pendingChat.timer);
+        pendingChat = {
+          content: msg.content,
+          meta: msg.meta ?? pendingChat?.meta ?? null,
+          inReplyTo: msg.inReplyTo ?? pendingChat?.inReplyTo ?? null,
+          timer: setTimeout(() => {
+            const p = pendingChat;
+            pendingChat = null;
+            if (p) write({ kind: "chat", content: p.content, meta: p.meta, inReplyTo: p.inReplyTo });
+          }, chatMergeMs),
+        };
+        return undefined;
       }
-      lines.push(
-        JSON.stringify({
-          kind: msg.kind ?? "chat",
-          text: msg.content,
-          operation: msg.operation ?? null,
-          type: msg.type ?? null,
-          inReplyTo: msg.inReplyTo ?? null,
-        }),
-      );
-      lines.push(JSON.stringify({ kind: "end", inReplyTo: msg.inReplyTo ?? null }));
-      const payload = lines.join("\n") + "\n";
-      for (const c of clients) c.write(payload);
+
+      // 非 chat（system/ask_question 等）：先冲刷缓冲，再立即广播本条
+      if (pendingChat) {
+        clearTimeout(pendingChat.timer);
+        const p = pendingChat;
+        pendingChat = null;
+        write({ kind: "chat", content: p.content, meta: p.meta, inReplyTo: p.inReplyTo });
+      }
+      write(msg);
       return undefined;
     },
 
