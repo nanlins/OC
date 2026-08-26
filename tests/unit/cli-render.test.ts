@@ -78,6 +78,13 @@ describe("cli render", () => {
     expect(plain).not.toContain("**");
     expect(plain).not.toContain("```");
   });
+
+  it("stripMarkdown 清理未闭合粗体/斜体残留（阶段 12 二次修复）", () => {
+    const plain = stripMarkdown("**知识管理 和行尾*");
+    expect(plain).not.toContain("**");
+    expect(plain).not.toContain("*");
+    expect(plain).toContain("知识管理");
+  });
 });
 
 /**
