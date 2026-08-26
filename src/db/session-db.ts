@@ -78,6 +78,7 @@ export const OUTBOUND_SCHEMA = `
     recurrence    TEXT,
     kind          TEXT NOT NULL,
     operation     TEXT,
+    stream_final  INTEGER NOT NULL DEFAULT 0,
     platform_id   TEXT,
     channel_type  TEXT,
     thread_id     TEXT,
@@ -132,6 +133,11 @@ export function ensureInboundSchema(db: Database.Database): void {
 
 export function ensureOutboundSchema(db: Database.Database): void {
   db.exec(OUTBOUND_SCHEMA);
+  // 阶段 12：旧会话库迁移——补 stream_final 列（流式结束信号，容器/主机增量合并用）
+  const cols = db.prepare("PRAGMA table_info(messages_out)").all() as Array<{ name: string }>;
+  if (!cols.some((c) => c.name === "stream_final")) {
+    db.exec("ALTER TABLE messages_out ADD COLUMN stream_final INTEGER NOT NULL DEFAULT 0");
+  }
 }
 
 /** 主机 seq 发号：偶数步长（容器用奇数，双方可交错不冲突） */
