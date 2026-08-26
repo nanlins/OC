@@ -14,7 +14,7 @@ import {
   teardownChannelAdapters,
   getChannelAdapterExact,
 } from "../../src/channels/channel-registry.js";
-import { cliSocketPath } from "../../src/channels/cli.js";
+import { cliSocketPath, setChatMergeMsForTest } from "../../src/channels/cli.js";
 import type { InboundMessage } from "../../src/channels/adapter.js";
 
 let received: InboundMessage[] = [];
@@ -22,6 +22,7 @@ let received: InboundMessage[] = [];
 beforeEach(async () => {
   initTestDb();
   received = [];
+  setChatMergeMsForTest(0); // 阶段 12：合并窗口归零，测试免等待
   await initChannelAdapters(() => ({
     onInbound: (_p, _t, message) => {
       received.push(message);
@@ -120,6 +121,29 @@ describe("cli channel", () => {
     expect(frames.map((f) => f.kind)).toEqual(["tool", "tool"]);
     expect(frames[0]).toMatchObject({ tool: "web_search", status: "running" });
     expect(frames[1]).toMatchObject({ status: "done", elapsedMs: 2100 });
+    client.destroy();
+  });
+
+  it("merges streaming edit increments into a single chat frame (阶段 12 流式合并)", async () => {
+    const client = await connectClient();
+    let got = "";
+    client.on("data", (c) => {
+      got += c.toString();
+    });
+    await new Promise((r) => setTimeout(r, 150));
+    const adapter = getChannelAdapterExact("cli");
+    // 模拟 poll-loop 流式：首条片段 + 两条 edit 增量，均带相同 meta
+    await adapter!.deliver("local", null, { kind: "chat", content: "我", meta: { agent: "g1" } });
+    await adapter!.deliver("local", null, { kind: "chat", content: "我是 OC Agent", operation: "edit", meta: { agent: "g1" } });
+    await adapter!.deliver("local", null, { kind: "chat", content: "我是 OC Agent 助手，可以帮你完成各类任务", operation: "edit", meta: { agent: "g1" } });
+    await new Promise((r) => setTimeout(r, 200));
+    const frames = got
+      .trim()
+      .split("\n")
+      .map((l) => JSON.parse(l) as { kind?: string; text?: string });
+    // 合并后应只有一组 meta + chat + end，且内容为最终版
+    expect(frames.map((f) => f.kind)).toEqual(["meta", "chat", "end"]);
+    expect(frames[1]!.text).toBe("我是 OC Agent 助手，可以帮你完成各类任务");
     client.destroy();
   });
 });
