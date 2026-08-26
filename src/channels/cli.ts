@@ -117,12 +117,29 @@ function createCliAdapter(): ChannelAdapter {
 
     deliver: async (_platformId, _threadId, msg: OutboundMessage) => {
       // 阶段 12：多帧协议（meta 可选 → 消息 → end），行分隔向后兼容（老客户端逐行 JSON.parse 只读 text）
+      // inReplyTo：流式消息链 id（poll-loop 首条消息 id），CLI 客户端据此合并同一回复的 edit 增量
       const lines: string[] = [];
-      if (msg.meta) lines.push(JSON.stringify({ kind: "meta", agent: msg.meta.agent ?? null, model: msg.meta.model ?? null, provider: msg.meta.provider ?? null }));
+      if (msg.meta) {
+        lines.push(
+          JSON.stringify({
+            kind: "meta",
+            agent: msg.meta.agent ?? null,
+            model: msg.meta.model ?? null,
+            provider: msg.meta.provider ?? null,
+            inReplyTo: msg.inReplyTo ?? null,
+          }),
+        );
+      }
       lines.push(
-        JSON.stringify({ kind: msg.kind ?? "chat", text: msg.content, operation: msg.operation ?? null, type: msg.type ?? null }),
+        JSON.stringify({
+          kind: msg.kind ?? "chat",
+          text: msg.content,
+          operation: msg.operation ?? null,
+          type: msg.type ?? null,
+          inReplyTo: msg.inReplyTo ?? null,
+        }),
       );
-      lines.push(JSON.stringify({ kind: "end" }));
+      lines.push(JSON.stringify({ kind: "end", inReplyTo: msg.inReplyTo ?? null }));
       const payload = lines.join("\n") + "\n";
       for (const c of clients) c.write(payload);
       return undefined;
