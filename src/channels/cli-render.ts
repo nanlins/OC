@@ -11,10 +11,10 @@
 import kleur from "kleur";
 
 export type CliFrame =
-  | { kind: "chat"; text: string; operation?: string | null }
-  | { kind: "meta"; agent?: string | null; model?: string | null; provider?: string | null }
+  | { kind: "chat"; text: string; operation?: string | null; inReplyTo?: string | null }
+  | { kind: "meta"; agent?: string | null; model?: string | null; provider?: string | null; inReplyTo?: string | null }
   | { kind: "tool"; tool: string; status: "running" | "done" | "error"; elapsedMs?: number }
-  | { kind: "end" }
+  | { kind: "end"; inReplyTo?: string | null }
   | { kind: "error"; text: string };
 
 export const USER_PREFIX = kleur.blue(" you  ");
@@ -57,7 +57,9 @@ export function stripMarkdown(text: string): string {
     .replace(/(^|\s)_([^_\n]+)_(?=\s|$)/g, "$1$2")
     .replace(/^#{1,6}\s+/gm, "")
     .replace(/^[-*+]\s+/gm, "· ")
-    .replace(/^>\s?/gm, "");
+    .replace(/^>\s?/gm, "")
+    .replace(/\*\*/g, "") // 未闭合粗体残留（如 "**知识管理"）
+    .replace(/\*/g, ""); // 其余孤立星号（闭合对已处理，剩余均为装饰性残留）
 }
 
 export function renderTool(tool: string, status: "running" | "done" | "error", elapsedMs?: number, tick: number = 0): string {
