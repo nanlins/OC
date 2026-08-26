@@ -160,9 +160,10 @@ function createCliAdapter(): ChannelAdapter {
       };
 
       // 流式合并（阶段 12 实测修复）：poll-loop 对同一回复写多条 outbound（首条片段 + 每 400ms 一条
-      // operation=edit + 最终 edit）。CLI 客户端无法可靠区分首条与 edit 链（inReplyTo 键不同），且投递间隔
-      // 1s 大于客户端 500ms 合并窗口 → 多段闪现。改为【服务端合并】：普通 chat 缓冲 CHAT_MERGE_MS，
-      // 期间到达的新 chat（edit）替换缓冲，超时才广播最新一条完整内容。客户端只收到一条，无多段。
+      // operation=edit + 最终 edit）。首条与 edit 的 inReplyTo 键不同，客户端无法按 key 合并。
+      // 改为【服务端合并】：普通 chat 缓冲，期间到达的新 chat（edit）替换缓冲；
+      // 流结束信号（streamFinal=true，poll-loop 最终 edit 携带）到达时立即冲刷最新完整版——
+      // 不再依赖时间窗口猜测，彻底消除"生成停顿 >窗口 → 提前 flush 重复段"问题。
       if (msg.kind === "chat" && !msg.type) {
         if (pendingChat) clearTimeout(pendingChat.timer);
         pendingChat = {
@@ -175,6 +176,13 @@ function createCliAdapter(): ChannelAdapter {
             if (p) write({ kind: "chat", content: p.content, meta: p.meta, inReplyTo: p.inReplyTo });
           }, chatMergeMs),
         };
+        // streamFinal：流式链最终完整版——立即冲刷（不等定时器）
+        if (msg.streamFinal === true) {
+          clearTimeout(pendingChat.timer);
+          const p = pendingChat;
+          pendingChat = null;
+          if (p) write({ kind: "chat", content: p.content, meta: p.meta, inReplyTo: p.inReplyTo });
+        }
         return undefined;
       }
 
