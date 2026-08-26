@@ -24,9 +24,10 @@ export function cliSocketPath(): string {
   return process.platform === "win32" ? `\\\\.\\pipe\\oc-chat-${INSTALL_SLUG}` : join(DATA_DIR, "cli-chat.sock");
 }
 
-/** 阶段 12：chat 流式合并窗口（毫秒）；测试可注入 0 免等待。
- *  3s 覆盖 delivery 1s 轮询间隔 + DeepSeek 流式生成停顿，降低首增量提前 flush 截断概率。 */
-let chatMergeMs = 3000;
+/** 阶段 12：chat 流式合并兜底窗口（毫秒）；测试可注入 0 免等待。
+ *  主路径是 streamFinal 流结束信号（立即冲刷）；本窗口仅兜底旧容器/异常中断场景。
+ *  15s 覆盖工具调用长停顿（agent 装浏览器/读大文件期间 LLM 可能几十秒无新增量）。 */
+let chatMergeMs = 15000;
 export function setChatMergeMsForTest(ms: number): void {
   chatMergeMs = ms;
 }
