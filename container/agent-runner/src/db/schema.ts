@@ -29,6 +29,7 @@ export const OUTBOUND_SCHEMA = `
   CREATE TABLE IF NOT EXISTS messages_out (
     id TEXT PRIMARY KEY, seq INTEGER UNIQUE, in_reply_to TEXT, timestamp TEXT NOT NULL,
     deliver_after TEXT, recurrence TEXT, kind TEXT NOT NULL, operation TEXT,
+    stream_final INTEGER NOT NULL DEFAULT 0,
     platform_id TEXT, channel_type TEXT, thread_id TEXT, content TEXT NOT NULL
   );
   CREATE TABLE IF NOT EXISTS processing_ack (
