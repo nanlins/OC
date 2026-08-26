@@ -49,6 +49,8 @@ export interface OutboundMessage {
   editTarget?: string | null;
   /** 阶段 12 CLI TUI：流式消息链 id（poll-loop 首条消息 id；edit 消息同链），CLI 客户端据此合并增量 */
   inReplyTo?: string | null;
+  /** 阶段 12：流式结束标记（true = 该消息为流式链最终完整版） */
+  streamFinal?: boolean | null;
   /** 阶段 12 CLI TUI：会话元数据帧（agent 名/provider/model）；非 CLI 通道忽略 */
   meta?: { agent?: string | null; model?: string | null; provider?: string | null } | null;
 }
