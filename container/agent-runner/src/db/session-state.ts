@@ -69,6 +69,11 @@ export interface HistoryEntry {
 
 const HISTORY_MAX_ENTRIES = 20;
 const HISTORY_MAX_BYTES = 64_000;
+/** 阶段 12 上下文治理：单条历史截断上限——assistant/user 4K 字符、tool 摘要 500 字符（防滚雪球撑爆窗口） */
+const ENTRY_MAX_CHARS = 4_000;
+const TOOL_ENTRY_MAX_CHARS = 500;
+/** 保留最早 2 条（用户原始意图），超条目上限时从中间丢弃而非丢最早 */
+const KEEP_OLDEST = 2;
 
 export function getHistory(provider: string): HistoryEntry[] {
   const raw = get(`history:${provider}`);
@@ -81,12 +86,22 @@ export function getHistory(provider: string): HistoryEntry[] {
   }
 }
 
-/** 保存历史：条目数 + 字节数双上限（超限截断最旧，即"轮换"的显式降级形态） */
+/** 单条截断：assistant 滚雪球回复 / 超长 user 粘贴 / 工具结果各按上限截断（保留头部=结论优先） */
+function capEntry(e: HistoryEntry): HistoryEntry {
+  const max = e.role === "tool" ? TOOL_ENTRY_MAX_CHARS : ENTRY_MAX_CHARS;
+  if (e.content.length <= max) return e;
+  return { role: e.role, content: `${e.content.slice(0, max)}\n…[truncated]` };
+}
+
+/** 保存历史：单条截断 + 条目/字节双上限（超限从中间丢弃，保留最早 KEEP_OLDEST 条原始意图） */
 export function setHistory(provider: string, entries: HistoryEntry[]): void {
-  let capped = entries.slice(-HISTORY_MAX_ENTRIES);
+  let capped = entries.map(capEntry);
+  if (capped.length > HISTORY_MAX_ENTRIES) {
+    capped = [...capped.slice(0, KEEP_OLDEST), ...capped.slice(-(HISTORY_MAX_ENTRIES - KEEP_OLDEST))];
+  }
   let serialized = JSON.stringify(capped);
-  while (serialized.length > HISTORY_MAX_BYTES && capped.length > 1) {
-    capped = capped.slice(1);
+  while (serialized.length > HISTORY_MAX_BYTES && capped.length > KEEP_OLDEST + 1) {
+    capped.splice(KEEP_OLDEST, 1); // 从中间删最旧（保留最早意图 + 最近上下文）
     serialized = JSON.stringify(capped);
   }
   set(`history:${provider}`, serialized);
