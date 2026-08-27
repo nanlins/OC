@@ -54,8 +54,34 @@ export function getOutboundDb(): Database {
     outbound.run("PRAGMA journal_mode = DELETE"); // 跨挂载可见性承重项
     outbound.run("PRAGMA busy_timeout = 5000");
     outbound.run("PRAGMA foreign_keys = ON");
+    // 阶段 12 实测修复：主机在 spawn 前对损坏库重建（删除文件）——容器打开后自愈建表
+    outbound.run(`CREATE TABLE IF NOT EXISTS messages_out (
+      id TEXT PRIMARY KEY, seq INTEGER UNIQUE, in_reply_to TEXT, timestamp TEXT NOT NULL,
+      deliver_after TEXT, recurrence TEXT, kind TEXT NOT NULL, operation TEXT,
+      stream_final INTEGER NOT NULL DEFAULT 0,
+      platform_id TEXT, channel_type TEXT, thread_id TEXT, content TEXT NOT NULL
+    )`);
+    outbound.run(
+      "CREATE TABLE IF NOT EXISTS processing_ack (message_id TEXT PRIMARY KEY, status TEXT NOT NULL, status_changed TEXT NOT NULL)",
+    );
+    outbound.run(
+      "CREATE TABLE IF NOT EXISTS session_state (key TEXT PRIMARY KEY, value TEXT NOT NULL, updated_at TEXT NOT NULL)",
+    );
+    outbound.run(
+      "CREATE TABLE IF NOT EXISTS container_state (id INTEGER PRIMARY KEY CHECK (id = 1), current_tool TEXT, tool_declared_timeout_ms INTEGER, tool_started_at TEXT, updated_at TEXT NOT NULL)",
+    );
   }
   return outbound;
+}
+
+/** 阶段 12 实测修复：强制重开 outbound 连接——VirtioFS 概率性 disk I/O error 的重试前奏 */
+export function closeOutboundDb(): void {
+  try {
+    outbound?.close();
+  } catch {
+    /* 已坏 */
+  }
+  outbound = null;
 }
 
 export function touchHeartbeat(): void {
