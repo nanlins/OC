@@ -55,6 +55,7 @@ import {
   outboundDbPath,
   sessionDir,
 } from "./session-manager.js";
+import { openOutboundDbRw } from "./db/session-db.js";
 import { validateAdditionalMounts } from "./modules/mount-security.js";
 import { log } from "./log.js";
 import type { Session } from "./types.js";
@@ -239,6 +240,26 @@ async function spawnContainer(session: Session): Promise<boolean> {
       }
     } catch {
       /* 清理失败不阻断 spawn（下一轮再试） */
+    }
+
+    // 阶段 12 实测修复：崩溃时页写入不完整会导致 outbound.db 物理损坏（容器打开报 disk I/O error）。
+    // spawn 前 RW 打开触发恢复 + integrity_check；损坏则删除重建（容器侧 getOutboundDb 有 schema 自愈）。
+    try {
+      const outPath = outboundDbPath(session.agent_group_id, session.id);
+      const chkDb = openOutboundDbRw(outPath);
+      const integrity = chkDb.pragma("integrity_check", { simple: true }) as unknown as string;
+      chkDb.close();
+      if (integrity !== "ok") {
+        log.warn(`outbound.db integrity check failed; rebuilding session db`, { sessionId: session.id, integrity });
+        rmSync(outPath, { force: true });
+      }
+    } catch (err) {
+      log.warn(`outbound.db recovery failed; rebuilding`, { sessionId: session.id, err });
+      try {
+        rmSync(outboundDbPath(session.agent_group_id, session.id), { force: true });
+      } catch {
+        /* 删除失败留给下一轮 */
+      }
     }
 
     // 删除孤儿心跳文件（否则 sweep 用陈旧 mtime 秒杀新容器）
