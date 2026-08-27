@@ -18,6 +18,9 @@ import type { RunnerConfig } from "../config.ts";
 import type { ToolContext } from "../mcp-tools/registry.ts";
 import type { RoutingContext } from "../formatter.ts";
 
+/** 阶段 12 上下文治理：工具结果入历史前的摘要长度（setHistory 还会再按 500 字符兜底截断） */
+const TOOL_DIGEST_CHARS = 500;
+
 export class OpenAICompatProvider implements AgentProvider {
   readonly name: string;
   private client: OpenAI;
@@ -52,7 +55,14 @@ export class OpenAICompatProvider implements AgentProvider {
     const history = getHistory(this.name);
     const messages: Array<Record<string, unknown>> = [];
     if (input.system) messages.push({ role: "system", content: input.system });
-    for (const h of history) messages.push({ role: h.role, content: h.content });
+    for (const h of history) {
+      // 阶段 12：持久化的工具摘要条目（role="tool" 无 tool_call_id）转 user 文本，避免 OpenAI API 400
+      if (h.role === "tool") {
+        messages.push({ role: "user", content: `[此前工具执行记录] ${h.content}` });
+      } else {
+        messages.push({ role: h.role, content: h.content });
+      }
+    }
     messages.push({ role: "user", content: input.prompt });
     const tracked: HistoryEntry[] = [...history, { role: "user", content: input.prompt }];
     for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
@@ -133,6 +143,9 @@ export class OpenAICompatProvider implements AgentProvider {
         for (const call of toolCalls) {
           const out = await executeToolCall(call.name, call.arguments, this.ctxFactory(input.routing));
           messages.push({ role: "tool", tool_call_id: call.id, content: out });
+          // 阶段 12 上下文治理：工具结果摘要入持久历史（setHistory 时按 500 字符截断）——
+          // 跨请求可见，agent 下一轮知道"试过什么、结果如何"，不再重复探索（happy-dom→Browser→apt→Playwright 死循环根因）
+          tracked.push({ role: "tool", content: `[tool:${call.name}] ${out.slice(0, TOOL_DIGEST_CHARS)}` });
         }
         continue;
       }
