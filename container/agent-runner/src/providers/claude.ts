@@ -18,6 +18,9 @@ import type { RunnerConfig } from "../config.ts";
 import type { ToolContext } from "../mcp-tools/registry.ts";
 import type { RoutingContext } from "../formatter.ts";
 
+/** 阶段 12 上下文治理：工具结果入历史前的摘要长度（setHistory 还会再按 500 字符兜底截断） */
+const TOOL_DIGEST_CHARS = 500;
+
 export class ClaudeProvider implements AgentProvider {
   readonly name = "claude";
   private client: Anthropic;
@@ -80,6 +83,8 @@ export class ClaudeProvider implements AgentProvider {
           // fix-plan P0：把本批次真实 routing 注入工具上下文（send_message 等据此路由）
           const out = await executeToolCall(use.name, JSON.stringify(use.input), this.ctxFactory(input.routing));
           results.push({ type: "tool_result", tool_use_id: use.id, content: out });
+          // 阶段 12 上下文治理：工具结果摘要入持久历史（跨请求防重复探索，setHistory 兜底截断）
+          tracked.push({ role: "tool", content: `[tool:${use.name}] ${out.slice(0, TOOL_DIGEST_CHARS)}` });
         }
         historyTail.push({ role: "user", content: results });
         continue;
