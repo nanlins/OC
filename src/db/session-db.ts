@@ -104,12 +104,28 @@ export const OUTBOUND_SCHEMA = `
 `;
 
 /** 打开会话库：DELETE journal 是跨挂载可见性的承重项。
- *  只读连接不可执行 journal_mode（写 pragma），否则抛 readonly——journal 模式只由写者设置（阶段 12 实测修复）。 */
+ *  只读连接不可执行 journal_mode（写 pragma），否则抛 readonly——journal 模式只由写者设置（阶段 12 实测修复）。
+ *  阶段 12 实测修复：VirtioFS 概率性 disk I/O error——打开+pragma 失败时同步退避重试 3 次。 */
 function openSessionDb(path: string, readonly: boolean): Database.Database {
-  const db = new Database(path, { readonly });
-  if (!readonly) db.pragma("journal_mode = DELETE");
-  db.pragma("busy_timeout = 5000");
-  return db;
+  let lastErr: unknown = null;
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      const db = new Database(path, { readonly });
+      if (!readonly) db.pragma("journal_mode = DELETE");
+      db.pragma("busy_timeout = 5000");
+      return db;
+    } catch (err) {
+      lastErr = err;
+      if (attempt < 3) {
+        const waitMs = 200 * attempt;
+        const t0 = Date.now();
+        while (Date.now() - t0 < waitMs) {
+          /* 同步忙等退避（打开路径为同步 API） */
+        }
+      }
+    }
+  }
+  throw lastErr;
 }
 
 /** 主机写 inbound：读写打开（主机是唯一写者） */
