@@ -42,13 +42,14 @@ function createCliAdapter(): ChannelAdapter {
   let server: Server | null = null;
   const clients = new Set<Socket>();
 
-  // 阶段 12：服务端流式合并缓冲（chat 消息合并窗口）
+  // 阶段 12：服务端流式合并缓冲（chat 消息合并窗口）+ 工具运行中标志（暂停兜底冲刷）
   let pendingChat: {
     content: string;
     meta: OutboundMessage["meta"] | null;
     inReplyTo: string | null;
     timer: NodeJS.Timeout;
   } | null = null;
+  let toolActive = false;
 
   const adapter: ChannelAdapter = {
     name: "cli",
@@ -160,11 +161,32 @@ function createCliAdapter(): ChannelAdapter {
         for (const c of clients) c.write(payload);
       };
 
+      // 冲刷合并缓冲（供各分支复用）
+      const flushPending = () => {
+        if (!pendingChat) return;
+        clearTimeout(pendingChat.timer);
+        const p = pendingChat;
+        pendingChat = null;
+        write({ kind: "chat", content: p.content, meta: p.meta, inReplyTo: p.inReplyTo });
+      };
+
+      // 兜底定时器：工具运行中推迟冲刷（重新定时），否则冲刷最后一条缓冲
+      const scheduleFallbackFlush = () => {
+        if (pendingChat) {
+          pendingChat.timer = setTimeout(() => {
+            if (toolActive) {
+              scheduleFallbackFlush(); // 工具运行中：继续等（等 streamFinal）
+              return;
+            }
+            flushPending();
+          }, chatMergeMs);
+        }
+      };
+
       // 流式合并（阶段 12 实测修复）：poll-loop 对同一回复写多条 outbound（首条片段 + 每 400ms 一条
-      // operation=edit + 最终 edit）。首条与 edit 的 inReplyTo 键不同，客户端无法按 key 合并。
-      // 改为【服务端合并】：普通 chat 缓冲，期间到达的新 chat（edit）替换缓冲；
-      // 流结束信号（streamFinal=true，poll-loop 最终 edit 携带）到达时立即冲刷最新完整版——
-      // 不再依赖时间窗口猜测，彻底消除"生成停顿 >窗口 → 提前 flush 重复段"问题。
+      // operation=edit + 最终 edit）。服务端合并：普通 chat 缓冲替换，streamFinal 到达立即冲刷最终完整版。
+      // 兜底定时器在【工具运行中】时推迟冲刷（工具调用长停顿期间 LLM 无新增量，若此刻 flush 会把
+      // "我先看看"类预告当完整回复显示——即用户看到的多个 agent + 中断 + 滚雪球）。
       if (msg.kind === "chat" && !msg.type) {
         if (pendingChat) clearTimeout(pendingChat.timer);
         pendingChat = {
@@ -172,34 +194,29 @@ function createCliAdapter(): ChannelAdapter {
           meta: msg.meta ?? pendingChat?.meta ?? null,
           inReplyTo: msg.inReplyTo ?? pendingChat?.inReplyTo ?? null,
           timer: setTimeout(() => {
-            const p = pendingChat;
-            pendingChat = null;
-            if (p) write({ kind: "chat", content: p.content, meta: p.meta, inReplyTo: p.inReplyTo });
+            if (toolActive) {
+              scheduleFallbackFlush();
+              return;
+            }
+            flushPending();
           }, chatMergeMs),
         };
         // streamFinal：流式链最终完整版——立即冲刷（不等定时器）
         if (msg.streamFinal === true) {
-          clearTimeout(pendingChat.timer);
-          const p = pendingChat;
-          pendingChat = null;
-          if (p) write({ kind: "chat", content: p.content, meta: p.meta, inReplyTo: p.inReplyTo });
+          flushPending();
         }
         return undefined;
       }
 
       // 非 chat（system/ask_question 等）：先冲刷缓冲，再立即广播本条
-      if (pendingChat) {
-        clearTimeout(pendingChat.timer);
-        const p = pendingChat;
-        pendingChat = null;
-        write({ kind: "chat", content: p.content, meta: p.meta, inReplyTo: p.inReplyTo });
-      }
+      flushPending();
       write(msg);
       return undefined;
     },
 
-    /** 阶段 12：容器工具状态广播（delivery 轮询 container_state 变化时调用） */
+    /** 阶段 12：容器工具状态广播（delivery 轮询 container_state 变化时调用）；running 时暂停合并冲刷 */
     notifyTool: (tool: string, status: "running" | "done" | "error", elapsedMs?: number) => {
+      toolActive = status === "running";
       const line = JSON.stringify({ kind: "tool", tool, status, elapsedMs: elapsedMs ?? null }) + "\n";
       for (const c of clients) c.write(line);
     },
