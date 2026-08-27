@@ -51,7 +51,7 @@ export function findByRouting(channelType: string, platformId: string): Destinat
   }
 }
 
-/** 系统提示附录：名字 + 可达目的地清单（send_message 的 name 词汇表） */
+/** 系统提示附录：名字 + 可达目的地清单（send_message 的 name 词汇表）+ 工作纪律（阶段 12 上下文治理） */
 export function buildSystemPromptAddendum(assistantName: string | null): string {
   const dests = getAllDestinations();
   const lines = dests.map((d) => `- ${d.name} (${d.type}${d.display_name ? `, ${d.display_name}` : ""})`);
@@ -60,6 +60,11 @@ export function buildSystemPromptAddendum(assistantName: string | null): string 
     "You can send messages/files to these destinations with the send_message/send_file tools:",
     ...lines,
     "When replying in the current chat, no destination is needed (default routing).",
+    "",
+    "Work discipline:",
+    "- Do not repeat previous replies or re-narrate your reasoning history in each answer. Answer the current question directly.",
+    "- If the same category of tool fails 3 times in a row, STOP trying and report the current state with clear options to the user.",
+    "- Keep replies concise; use lists only when the user asks for a full audit/report.",
   ]
     .filter(Boolean)
     .join("\n");
