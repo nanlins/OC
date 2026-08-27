@@ -26,8 +26,9 @@ export function cliSocketPath(): string {
 
 /** 阶段 12：chat 流式合并兜底窗口（毫秒）；测试可注入 0 免等待。
  *  主路径是 streamFinal 流结束信号（立即冲刷）；本窗口仅兜底旧容器/异常中断场景。
- *  15s 覆盖工具调用长停顿（agent 装浏览器/读大文件期间 LLM 可能几十秒无新增量）。 */
-let chatMergeMs = 15000;
+ *  120s：工具调用序列中"工具 done → 下一个工具 running"的 LLM 生成间隙可达几十秒，
+ *  窗口过短会把累积中间态当完整回复 flush（用户看到的滚雪球多条 agent 根因）。 */
+let chatMergeMs = 120_000;
 export function setChatMergeMsForTest(ms: number): void {
   chatMergeMs = ms;
 }
