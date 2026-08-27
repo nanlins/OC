@@ -43,6 +43,12 @@ export function isCorruptionError(err: unknown): boolean {
   return /SQLITE_CORRUPT|database disk image is malformed|file is not a database/i.test(msg);
 }
 
+/** 阶段 12 实测修复：VirtioFS 概率性 disk I/O error——视为瞬态，短暂退避后重试而非 fatal */
+export function isTransientIoError(err: unknown): boolean {
+  const msg = String(err);
+  return /disk I\/O error/i.test(msg);
+}
+
 const CORRUPTION_STREAK_MAX = 10;
 
 /** fix-plan 流式增量投递：edit 节流间隔（毫秒） */
@@ -70,6 +76,14 @@ export async function runPollLoop(cfg: PollLoopConfig): Promise<void> {
           else process.exit(75);
         }
         await sleep(idleMs);
+        continue;
+      }
+      // 阶段 12 实测修复：VirtioFS 概率性 disk I/O error 视为瞬态，重开连接退避重试（不 fatal）
+      if (isTransientIoError(err)) {
+        log(`transient io error, retrying poll: ${String(err)}`, "warn");
+        const { closeOutboundDb } = await import("./db/connection.ts");
+        closeOutboundDb();
+        await sleep(idleMs * 2);
         continue;
       }
       throw err;
