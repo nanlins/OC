@@ -9,7 +9,7 @@
  * 修改记录：
  *   2026-08-12 创建（阶段 4）；重写修复转码损坏
  */
-import { getOutboundDb, openInboundLongLived, runNamed } from "./connection.ts";
+import { getOutboundDb, closeOutboundDb, openInboundLongLived, runNamed } from "./connection.ts";
 
 export interface WriteMessageOut {
   id: string;
@@ -35,6 +35,25 @@ export function nextOddSeq(db: ReturnType<typeof getOutboundDb>): number {
 }
 
 export function writeMessageOut(msg: WriteMessageOut): number {
+  // 阶段 12 实测修复：VirtioFS 概率性 disk I/O error——重开连接 + 退避重试 3 次（Bun.sleepSync 同步退避）
+  let lastErr: unknown = null;
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      return doWriteMessageOut(msg);
+    } catch (err) {
+      lastErr = err;
+      closeOutboundDb();
+      try {
+        Bun.sleepSync(150 * attempt);
+      } catch {
+        /* Bun 不存在 sleepSync 时退化为紧循环 */
+      }
+    }
+  }
+  throw lastErr;
+}
+
+function doWriteMessageOut(msg: WriteMessageOut): number {
   const db = getOutboundDb();
   const seq = nextOddSeq(db);
   runNamed(
