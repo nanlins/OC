@@ -99,6 +99,7 @@ export const OUTBOUND_SCHEMA = `
     current_tool             TEXT,
     tool_declared_timeout_ms INTEGER,
     tool_started_at          TEXT,
+    current_tool_args        TEXT,
     updated_at               TEXT NOT NULL
   );
 `;
@@ -153,6 +154,11 @@ export function ensureOutboundSchema(db: Database.Database): void {
   const cols = db.prepare("PRAGMA table_info(messages_out)").all() as Array<{ name: string }>;
   if (!cols.some((c) => c.name === "stream_final")) {
     db.exec("ALTER TABLE messages_out ADD COLUMN stream_final INTEGER NOT NULL DEFAULT 0");
+  }
+  // 阶段 12：旧会话库迁移——补 container_state.current_tool_args 列（命令可视化）
+  const csCols = db.prepare("PRAGMA table_info(container_state)").all() as Array<{ name: string }>;
+  if (csCols.length > 0 && !csCols.some((c) => c.name === "current_tool_args")) {
+    db.exec("ALTER TABLE container_state ADD COLUMN current_tool_args TEXT");
   }
 }
 
@@ -433,19 +439,23 @@ export function countLiveTasks(inbound: Database.Database): number {
   return row.c;
 }
 
-/** 容器当前工具状态（sweep 放宽卡死判定用；仅 current_tool='Bash' 时声明超时生效，P2 修复） */
+/** 容器当前工具状态（sweep 放宽卡死判定用；仅 current_tool='Bash' 时声明超时生效，P2 修复）。
+ *  阶段 12：current_tool_args 携带命令摘要（旧库无此列时 SELECT 抛错→catch 返回 null，容错）。 */
 export function getContainerToolState(outbound: Database.Database): {
   current_tool: string | null;
   tool_declared_timeout_ms: number | null;
+  current_tool_args: string | null;
 } {
   try {
     const row = outbound
-      .prepare("SELECT current_tool, tool_declared_timeout_ms FROM container_state WHERE id = 1")
-      .get() as { current_tool: string | null; tool_declared_timeout_ms: number | null } | undefined;
-    if (!row) return { current_tool: null, tool_declared_timeout_ms: null };
+      .prepare("SELECT current_tool, tool_declared_timeout_ms, current_tool_args FROM container_state WHERE id = 1")
+      .get() as
+      | { current_tool: string | null; tool_declared_timeout_ms: number | null; current_tool_args: string | null }
+      | undefined;
+    if (!row) return { current_tool: null, tool_declared_timeout_ms: null, current_tool_args: null };
     const bashTimeout = row.current_tool === "Bash" ? row.tool_declared_timeout_ms : null;
-    return { current_tool: row.current_tool, tool_declared_timeout_ms: bashTimeout };
+    return { current_tool: row.current_tool, tool_declared_timeout_ms: bashTimeout, current_tool_args: row.current_tool_args ?? null };
   } catch {
-    return { current_tool: null, tool_declared_timeout_ms: null }; // 缺表/损坏容忍
+    return { current_tool: null, tool_declared_timeout_ms: null, current_tool_args: null };
   }
 }
