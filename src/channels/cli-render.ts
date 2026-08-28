@@ -13,7 +13,7 @@ import kleur from "kleur";
 export type CliFrame =
   | { kind: "chat"; text: string; operation?: string | null; inReplyTo?: string | null }
   | { kind: "meta"; agent?: string | null; model?: string | null; provider?: string | null; inReplyTo?: string | null }
-  | { kind: "tool"; tool: string; status: "running" | "done" | "error"; elapsedMs?: number }
+  | { kind: "tool"; tool: string; status: "running" | "done" | "error"; elapsedMs?: number; args?: string | null }
   | { kind: "end"; inReplyTo?: string | null }
   | { kind: "error"; text: string };
 
@@ -71,9 +71,17 @@ export function stripMarkdown(text: string): string {
     .replace(/\*/g, ""); // 其余孤立星号（闭合对已处理，剩余均为装饰性残留）
 }
 
-export function renderTool(tool: string, status: "running" | "done" | "error", elapsedMs?: number, tick: number = 0): string {
+/** 工具帧渲染：阶段 12 命令可视化——args 携带命令摘要（如 bash 命令），单行截断展示 */
+export function renderTool(
+  tool: string,
+  status: "running" | "done" | "error",
+  elapsedMs?: number,
+  tick: number = 0,
+  args?: string | null,
+): string {
   const suffix = status !== "running" && elapsedMs !== undefined ? kleur.gray(`  ${(elapsedMs / 1000).toFixed(1)}s`) : "";
-  return `${TOOL_PREFIX}${toolStatusGlyph(status, tick)} ${kleur.dim(tool)}${suffix}`;
+  const cmd = args ? kleur.cyan(`  $ ${args}`) : "";
+  return `${TOOL_PREFIX}${toolStatusGlyph(status, tick)} ${kleur.dim(tool)}${suffix}${cmd}`;
 }
 
 export function renderError(text: string): string {
@@ -86,7 +94,7 @@ export function renderFrame(frame: CliFrame, tick: number = 0): string[] {
     case "chat":
       return renderChat(frame.text).split("\n");
     case "tool":
-      return [renderTool(frame.tool, frame.status, frame.elapsedMs, tick)];
+      return [renderTool(frame.tool, frame.status, frame.elapsedMs, tick, frame.args)];
     case "error":
       return [renderError(frame.text)];
     case "meta":
