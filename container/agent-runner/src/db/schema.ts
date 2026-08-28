@@ -39,6 +39,7 @@ export const OUTBOUND_SCHEMA = `
     key TEXT PRIMARY KEY, value TEXT NOT NULL, updated_at TEXT NOT NULL
   );
   CREATE TABLE IF NOT EXISTS container_state (
-    id INTEGER PRIMARY KEY CHECK (id = 1), current_tool TEXT, tool_declared_timeout_ms INTEGER, tool_started_at TEXT, updated_at TEXT NOT NULL
+    id INTEGER PRIMARY KEY CHECK (id = 1), current_tool TEXT, tool_declared_timeout_ms INTEGER,
+    tool_started_at TEXT, current_tool_args TEXT, updated_at TEXT NOT NULL
   );
 `;
