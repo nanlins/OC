@@ -68,8 +68,13 @@ export function getOutboundDb(): Database {
       "CREATE TABLE IF NOT EXISTS session_state (key TEXT PRIMARY KEY, value TEXT NOT NULL, updated_at TEXT NOT NULL)",
     );
     outbound.run(
-      "CREATE TABLE IF NOT EXISTS container_state (id INTEGER PRIMARY KEY CHECK (id = 1), current_tool TEXT, tool_declared_timeout_ms INTEGER, tool_started_at TEXT, updated_at TEXT NOT NULL)",
+      "CREATE TABLE IF NOT EXISTS container_state (id INTEGER PRIMARY KEY CHECK (id = 1), current_tool TEXT, tool_declared_timeout_ms INTEGER, tool_started_at TEXT, current_tool_args TEXT, updated_at TEXT NOT NULL)",
     );
+    // 阶段 12：旧库补 current_tool_args 列（命令可视化），PRAGMA 守卫幂等
+    const csCols = outbound.prepare("PRAGMA table_info(container_state)").all() as Array<{ name: string }>;
+    if (!csCols.some((c) => c.name === "current_tool_args")) {
+      outbound.run("ALTER TABLE container_state ADD COLUMN current_tool_args TEXT");
+    }
   }
   return outbound;
 }
@@ -117,16 +122,23 @@ export function allNamed<T>(stmt: unknown, params: Record<string, unknown>): T[]
   return (stmt as { all: (p: Record<string, unknown>) => T[] }).all(params);
 }
 
-/** PreToolUse/PostToolUse 联动：当前工具在飞标记（宿主 sweep 放宽卡死判定） */
-export function setContainerToolInFlight(tool: string, declaredTimeoutMs: number | null): void {
+/** PreToolUse/PostToolUse 联动：当前工具在飞标记（宿主 sweep 放宽卡死判定）。
+ *  阶段 12：argsSummary 携带命令摘要（如 bash 命令），供宿主 TUI 实时展示"执行了哪些命令"。 */
+export function setContainerToolInFlight(tool: string, declaredTimeoutMs: number | null, argsSummary?: string): void {
   const db = getOutboundDb();
   runNamed(
     db.prepare(
-      `INSERT INTO container_state (id, current_tool, tool_declared_timeout_ms, tool_started_at, updated_at)
-       VALUES (1, $tool, $timeout, $started, $updated)
-       ON CONFLICT (id) DO UPDATE SET current_tool=$tool, tool_declared_timeout_ms=$timeout, tool_started_at=$started, updated_at=$updated`,
+      `INSERT INTO container_state (id, current_tool, tool_declared_timeout_ms, tool_started_at, current_tool_args, updated_at)
+       VALUES (1, $tool, $timeout, $started, $args, $updated)
+       ON CONFLICT (id) DO UPDATE SET current_tool=$tool, tool_declared_timeout_ms=$timeout, tool_started_at=$started, current_tool_args=$args, updated_at=$updated`,
     ),
-    { $tool: tool, $timeout: declaredTimeoutMs, $started: new Date().toISOString(), $updated: new Date().toISOString() },
+    {
+      $tool: tool,
+      $timeout: declaredTimeoutMs,
+      $args: argsSummary ?? null,
+      $started: new Date().toISOString(),
+      $updated: new Date().toISOString(),
+    },
   );
 }
 
@@ -134,9 +146,9 @@ export function clearContainerToolInFlight(): void {
   const db = getOutboundDb();
   runNamed(
     db.prepare(
-      `INSERT INTO container_state (id, current_tool, tool_declared_timeout_ms, tool_started_at, updated_at)
-       VALUES (1, NULL, NULL, NULL, $updated)
-       ON CONFLICT (id) DO UPDATE SET current_tool=NULL, tool_declared_timeout_ms=NULL, tool_started_at=NULL, updated_at=$updated`,
+      `INSERT INTO container_state (id, current_tool, tool_declared_timeout_ms, tool_started_at, current_tool_args, updated_at)
+       VALUES (1, NULL, NULL, NULL, NULL, $updated)
+       ON CONFLICT (id) DO UPDATE SET current_tool=NULL, tool_declared_timeout_ms=NULL, tool_started_at=NULL, current_tool_args=NULL, updated_at=$updated`,
     ),
     { $updated: new Date().toISOString() },
   );
