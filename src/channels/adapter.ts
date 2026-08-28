@@ -88,7 +88,7 @@ export interface ChannelAdapter {
   subscribe?: (platformId: string, threadId: string | null) => Promise<void>;
   openDM?: (userHandle: string) => Promise<string>;
   /** 阶段 12 CLI TUI：容器工具运行状态广播（当前仅 cli 通道实现；host-sweep/delivery 轮询驱动） */
-  notifyTool?: (tool: string, status: "running" | "done" | "error", elapsedMs?: number) => void;
+  notifyTool?: (tool: string, status: "running" | "done" | "error", elapsedMs?: number, args?: string | null) => void;
   defaults?: ChannelDefaults;
 }
 

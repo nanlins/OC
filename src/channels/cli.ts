@@ -215,10 +215,12 @@ function createCliAdapter(): ChannelAdapter {
       return undefined;
     },
 
-    /** 阶段 12：容器工具状态广播（delivery 轮询 container_state 变化时调用）；running 时暂停合并冲刷 */
-    notifyTool: (tool: string, status: "running" | "done" | "error", elapsedMs?: number) => {
+    /** 阶段 12：容器工具状态广播（delivery 轮询 container_state 变化时调用）；running 时暂停合并冲刷。
+     *  args 携带命令摘要（如 bash 命令），TUI 实时展示"执行了哪些命令"。 */
+    notifyTool: (tool: string, status: "running" | "done" | "error", elapsedMs?: number, args?: string | null) => {
       toolActive = status === "running";
-      const line = JSON.stringify({ kind: "tool", tool, status, elapsedMs: elapsedMs ?? null }) + "\n";
+      const line =
+        JSON.stringify({ kind: "tool", tool, status, elapsedMs: elapsedMs ?? null, args: args ?? null }) + "\n";
       for (const c of clients) c.write(line);
     },
   };
