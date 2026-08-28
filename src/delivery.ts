@@ -234,7 +234,7 @@ let sweepTimer: NodeJS.Timeout | null = null;
 
 // 阶段 12：容器工具状态跟踪（sessionId → 当前工具 + 开始时间），变化时经 CLI 通道广播 tool 帧。
 // 用途：CLI 通道据此暂停流式合并的兜底冲刷（工具调用长停顿期间不误 flush 中间态）。
-const toolStates = new Map<string, { tool: string | null; startedAt: number }>();
+const toolStates = new Map<string, { tool: string | null; startedAt: number; args: string | null }>();
 
 /** 只读 container_state（容器写、主机读），不违反单写者原则；缺适配器/读失败静默（disk I/O 有重试兜底） */
 function watchContainerTools(): void {
@@ -246,16 +246,17 @@ function watchContainerTools(): void {
       const state = getContainerToolState(outbound);
       outbound.close();
       const nowTool = state.current_tool;
+      const nowArgs = state.current_tool_args ?? null;
       const prev = toolStates.get(s.id);
-      if (!prev || prev.tool !== nowTool) {
+      if (!prev || prev.tool !== nowTool || prev.args !== nowArgs) {
         if (prev?.tool && prev.tool !== nowTool) {
-          adapter.notifyTool(prev.tool, "done", Date.now() - prev.startedAt);
+          adapter.notifyTool(prev.tool, "done", Date.now() - prev.startedAt, prev.args);
         }
         if (nowTool) {
-          toolStates.set(s.id, { tool: nowTool, startedAt: Date.now() });
-          adapter.notifyTool(nowTool, "running");
+          toolStates.set(s.id, { tool: nowTool, startedAt: Date.now(), args: nowArgs });
+          adapter.notifyTool(nowTool, "running", undefined, nowArgs);
         } else {
-          toolStates.set(s.id, { tool: null, startedAt: 0 });
+          toolStates.set(s.id, { tool: null, startedAt: 0, args: null });
         }
       }
     } catch {
