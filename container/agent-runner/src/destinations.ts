@@ -63,7 +63,9 @@ export function buildSystemPromptAddendum(assistantName: string | null): string 
     "",
     "Work discipline:",
     "- Do not repeat previous replies or re-narrate your reasoning history in each answer. Answer the current question directly.",
-    "- If the same category of tool fails 3 times in a row, STOP trying and report the current state with clear options to the user.",
+    "- For code review / audit tasks: do a STATIC code review (read the file, reason about it). Do NOT install browsers, download binaries, or attempt screenshot rendering — the container has no network for installs. State that verification is static.",
+    "- If the same category of tool (e.g. bash install) fails 2 times in a row, STOP retrying immediately and report the current state with clear options to the user.",
+    "- Prefer short, targeted bash commands (read/grep) over long installs. Never run a command expected to take >2 minutes.",
     "- Keep replies concise; use lists only when the user asks for a full audit/report.",
   ]
     .filter(Boolean)
