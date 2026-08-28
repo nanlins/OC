@@ -65,8 +65,11 @@ export function registerFilesBashTools(): void {
         required: ["command"],
       },
       handler: async (args) => {
-        const timeout = Math.min(Number(args.timeout ?? 30000), 600000); // P1-8 修复：clamp 10min 硬上限
-        setContainerToolInFlight("Bash", timeout);
+        // 阶段 12 实测：硬上限 600s→120s——挂起命令（如被断网的安装）快速失败，避免单命令烧 5 分钟
+        const timeout = Math.min(Number(args.timeout ?? 30000), 120000);
+        // 命令摘要单行化 + 截断，供宿主 TUI 实时展示
+        const cmdSummary = String(args.command).replace(/\s+/g, " ").slice(0, 200);
+        setContainerToolInFlight("Bash", timeout, cmdSummary);
         try {
           return await new Promise((resolvePromise, rejectPromise) => {
             execFile(
