@@ -1,6 +1,6 @@
 # OC —— 个人 AI 助手平台
 
-> 从 0 到 1 复刻 nanoclaw v2 核心架构，并做自主扩展：Web 控制台/React 前端/评估观测/i18n/RAG/9 渠道内置/流式增量投递。
+> 从 0 到 1 学习 nanoclaw v2 核心架构，并做自主扩展：Web 控制台/React 前端/评估观测/i18n/RAG/9 渠道内置/流式增量投递。
 > 基线：`nanoclaw`（GitHub nanocoai/nanoclaw）。
 
 ## 架构一句话
