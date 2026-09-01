@@ -1,7 +1,6 @@
 # OC —— 个人 AI 助手平台
 
 > 用途：OC 项目入口文档——项目简介、快速开始、配置说明、使用示例、架构说明。
-> 基线：`nanoclaw` v2（GitHub nanocoai/nanoclaw），从 0 到 1 复刻核心架构并自主扩展。
 
 ## 项目简介
 
@@ -130,7 +129,3 @@ cd container/agent-runner && bun test           # 容器
 ```
 
 - `docs/architecture.md` 架构设计 · `docs/security.md` 安全模型 · `docs/api-reference.md` API 参考
-
-## 修改记录
-
-- 2026-09-01 重写：收束为简介/快速开始/配置/示例/架构五板块，对齐阶段 12-15 现状（setup 向导、斜杠命令、stream_final、DB 恢复修复）
