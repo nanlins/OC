@@ -24,10 +24,12 @@ import "./long-term-memory.js";
 import "./session-summarizer.js";
 import "./notifications.js";
 import "./rich-media.js";
+import "./chat-commands.js";
 
 export {};
 
 /*
  * 修改记录：
  *   2026-08-24 补齐未完成清单：添加 mount-security 模块导入
+ *   2026-09-01 阶段 15：接入 chat-commands（聊天斜杠命令拦截器）
  */
