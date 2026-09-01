@@ -301,6 +301,8 @@ export function writeOutboundDirect(
     platformId?: string | null;
     channelType?: string | null;
     threadId?: string | null;
+    /** 阶段 15：宿主直写的 chat 回复置 stream_final=1，cli 通道立即冲刷（不进 120s 合并缓冲） */
+    streamFinal?: boolean;
   },
 ): void {
   // P2-1 修复：seq 读取与 INSERT 同事务，消除与容器并发写的竞态窗口
@@ -309,13 +311,14 @@ export function writeOutboundDirect(
     const max = row.m ?? 0;
     const seq = max % 2 === 0 ? max + 2 : max + 1; // 偶数对齐：容器奇数 seq 存在时跳到下一个偶数
     db.prepare(
-      `INSERT INTO messages_out (id, seq, in_reply_to, timestamp, deliver_after, recurrence, kind, platform_id, channel_type, thread_id, content)
-       VALUES (?, ?, NULL, ?, NULL, NULL, ?, ?, ?, ?, ?)`,
+      `INSERT INTO messages_out (id, seq, in_reply_to, timestamp, deliver_after, recurrence, kind, stream_final, platform_id, channel_type, thread_id, content)
+       VALUES (?, ?, NULL, ?, NULL, NULL, ?, ?, ?, ?, ?, ?)`,
     ).run(
       opts.id,
       seq,
       new Date().toISOString(),
       opts.kind,
+      opts.streamFinal ? 1 : 0,
       opts.platformId ?? null,
       opts.channelType ?? null,
       opts.threadId ?? null,
