@@ -52,6 +52,28 @@ export function setCurrentInReplyTo(value: string): void {
   set("current_in_reply_to", value);
 }
 
+// ---- 阶段 12（路径 B）：子任务清单持久化（todo_write 工具用，跨消息可见） ----
+
+export interface TodoItem {
+  content: string;
+  status: "pending" | "in_progress" | "completed";
+}
+
+export function getTodos(): TodoItem[] {
+  const raw = get("todos");
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw) as TodoItem[];
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+export function setTodos(todos: TodoItem[]): void {
+  set("todos", JSON.stringify(todos));
+}
+
 export function getCurrentInReplyTo(): string | null {
   return get("current_in_reply_to");
 }
