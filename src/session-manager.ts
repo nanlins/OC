@@ -141,6 +141,7 @@ export function writeOutboundDirectFor(
     platformId?: string | null;
     channelType?: string | null;
     threadId?: string | null;
+    streamFinal?: boolean;
   },
 ): string {
   const id = opts.id ?? cryptoRandomId();
