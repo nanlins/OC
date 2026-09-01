@@ -31,7 +31,6 @@ export function uploadTrace(events: TraceEvent[]): void {
   writeMessageOut({
     id: randomUUID(),
     kind: "trace",
-    timestamp: new Date().toISOString(),
     content: lines,
   });
 }
