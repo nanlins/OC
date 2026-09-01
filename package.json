@@ -14,6 +14,7 @@
     "build:web": "pnpm --dir web/frontend build",
     "start": "tsx src/index.ts",
     "chat": "tsx scripts/chat.ts",
+    "setup": "tsx scripts/setup.ts",
     "demo-setup": "tsx scripts/demo-setup.ts",
     "oc": "tsx src/cli/client.ts",
     "dev": "tsx src/index.ts",
