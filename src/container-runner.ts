@@ -16,9 +16,11 @@
  * 修改记录：
  *   2026-08-12 创建（阶段 3）
  *   2026-08-12 复检修复：--shm-size 无条件附加；pids-limit floor+finite 校验
+ *   2026-08-28 阶段 12 P0 修复：新增 ensureSessionDbFiles（docker run 前确保双库为文件），
+ *              恢复块 rmSync 加 recursive——修复 outbound.db 被 bind-mount 误建目录致 SQLITE_CANTOPEN_ISDIR 永久卡死
  */
 import { spawn as defaultSpawn, type ChildProcess } from "node:child_process";
-import { rmSync, writeFileSync } from "node:fs";
+import { rmSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import {
   CONTAINER_CPU_LIMIT,
@@ -50,6 +52,7 @@ import {
 import {
   heartbeatPath,
   inboundDbPath,
+  initSessionFolder,
   markContainerRunning,
   markContainerStopped,
   outboundDbPath,
@@ -168,6 +171,26 @@ export async function wakeContainer(session: Session): Promise<boolean> {
   return p;
 }
 
+/**
+ * spawn 前确保 inbound.db/outbound.db 以"文件"形式存在（P0 修复，阶段 12 实测）。
+ * Docker bind-mount 挂载【不存在】的文件路径时会自动创建【目录】，better-sqlite3 之后打开
+ * 报 SQLITE_CANTOPEN_ISDIR；且非递归 rmSync 无法清除该目录 → 后台循环每分钟重复失败、永久卡死。
+ * 触发点：下方恢复逻辑（完整性检查失败）rmSync 删除 outbound.db 文件后未重建即 docker run。
+ * 故 docker run 前：先递归清除任何误生成目录的路径，再经 initSessionFolder 重建双库文件+schema。
+ */
+function ensureSessionDbFiles(session: Session): void {
+  for (const p of [
+    inboundDbPath(session.agent_group_id, session.id),
+    outboundDbPath(session.agent_group_id, session.id),
+  ]) {
+    const st = statSync(p, { throwIfNoEntry: false });
+    if (st?.isDirectory()) {
+      rmSync(p, { recursive: true, force: true });
+    }
+  }
+  initSessionFolder(session);
+}
+
 async function spawnContainer(session: Session): Promise<boolean> {
   try {
     const group = getAgentGroup(session.agent_group_id);
@@ -251,15 +274,23 @@ async function spawnContainer(session: Session): Promise<boolean> {
       chkDb.close();
       if (integrity !== "ok") {
         log.warn(`outbound.db integrity check failed; rebuilding session db`, { sessionId: session.id, integrity });
-        rmSync(outPath, { force: true });
+        rmSync(outPath, { force: true, recursive: true });
       }
     } catch (err) {
       log.warn(`outbound.db recovery failed; rebuilding`, { sessionId: session.id, err });
       try {
-        rmSync(outboundDbPath(session.agent_group_id, session.id), { force: true });
+        rmSync(outboundDbPath(session.agent_group_id, session.id), { force: true, recursive: true });
       } catch {
         /* 删除失败留给下一轮 */
       }
+    }
+
+    // P0 修复（阶段 12 实测）：上方恢复逻辑可能已删除 outbound.db 文件——docker run 前必须确保
+    // 双库以文件形式存在，否则 bind-mount 会把缺失路径创建成目录（SQLITE_CANTOPEN_ISDIR 永久卡死）。
+    try {
+      ensureSessionDbFiles(session);
+    } catch (err) {
+      log.warn("ensureSessionDbFiles failed (transient)", { sessionId: session.id, err });
     }
 
     // 删除孤儿心跳文件（否则 sweep 用陈旧 mtime 秒杀新容器）
