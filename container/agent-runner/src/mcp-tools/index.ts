@@ -15,6 +15,8 @@ import { registerCoreTools } from "./core.ts";
 import { registerFilesBashTools } from "./files-bash.ts";
 import { registerInteractiveSchedulingWebTools } from "./interactive-scheduling-web.ts";
 import { registerKbSearchTool } from "./kb-search.ts";
+import { registerTodoTool } from "./todo.ts";
+import { registerSubagentTool } from "./subagent.ts";
 import { allTools, getTool, type ToolContext } from "./registry.ts";
 
 export function bootstrapTools(): void {
@@ -22,6 +24,8 @@ export function bootstrapTools(): void {
   registerFilesBashTools();
   registerInteractiveSchedulingWebTools();
   registerKbSearchTool();
+  registerTodoTool(); // 阶段 12 路径 B：子任务清单
+  registerSubagentTool(); // 阶段 12 路径 B：子agent 委派
 }
 
 export async function startMcpServer(ctx: ToolContext): Promise<void> {
