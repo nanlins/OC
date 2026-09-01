@@ -7,6 +7,7 @@
  *
  * 修改记录：
  *   2026-08-12 创建（阶段 4）；重写修复转码损坏
+ *   2026-08-28 阶段 12 路径 B：系统提示改为工厂每轮求值，注入 renderTodosSection（todo 跨消息可见）
  */
 import { loadConfig } from "./config.ts";
 import { buildSystemPromptAddendum } from "./destinations.ts";
@@ -14,6 +15,7 @@ import { ensureMemoryScaffold, renderMemorySection } from "./memory/scaffold.ts"
 import { loadSkills, renderSkillsSection } from "./skills/loader.ts";
 import { loadClaudeMd, renderClaudeMdSection } from "./claude-md.ts";
 import { bootstrapTools } from "./mcp-tools/index.ts";
+import { renderTodosSection } from "./mcp-tools/todo.ts";
 import type { ToolContext } from "./mcp-tools/registry.ts";
 import type { RoutingContext } from "./formatter.ts";
 import { createProvider } from "./providers/index.ts";
@@ -50,8 +52,10 @@ export async function main(): Promise<void> {
     timezone: tz,
     assistantName: config.assistantName,
     maxMessages: config.maxMessagesPerPrompt,
-    // 群组指令（CLAUDE.md）置于技能/记忆之前作为人格/行为基线
-    systemPrompt: [claudeMd, addendum, skills, memory].filter(Boolean).join("\n"),
+    // 群组指令（CLAUDE.md）置于技能/记忆之前作为人格/行为基线；
+    // 阶段 12：系统提示用工厂每轮求值，使 todo_write 更新的子任务清单跨消息可见
+    systemPrompt: () =>
+      [claudeMd, addendum, skills, memory, renderTodosSection()].filter(Boolean).join("\n"),
   });
 }
 
@@ -61,3 +65,7 @@ if (process.env.VITEST !== "true" && import.meta.main) {
     process.exit(1);
   });
 }
+/*
+ * 修改记录：
+ *   2026-08-28 阶段 12 路径 B：系统提示改为工厂每轮求值，注入 renderTodosSection（todo 跨消息可见）
+ */
