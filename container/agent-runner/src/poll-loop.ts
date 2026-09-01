@@ -13,6 +13,7 @@
  *   2026-08-12 创建（阶段 4）；重写修复转码损坏
  *   2026-08-12 修复：循环尾 await sleep(0) 宏任务让渡（防纯同步 provider 微任务空转饿死定时器）
  *   2026-08-12 ai-inspector 修复：/clear 重置 continuation+历史；热路径 formatMessages；in_reply_to+clearCurrentInReplyTo；system 注入；批次日志
+ *   2026-08-28 阶段 12 路径 B：systemPrompt 支持工厂（每轮求值），使 todo 清单跨消息刷新
  */
 import { randomUUID } from "node:crypto";
 import { log } from "./log-lite.ts";
@@ -28,8 +29,8 @@ export interface PollLoopConfig {
   timezone: string;
   assistantName: string | null;
   maxMessages: number;
-  /** 系统提示（目的地附录 + 记忆恒载），P1-1 修复注入 LLM */
-  systemPrompt?: string;
+  /** 系统提示（目的地附录 + 记忆恒载），P1-1 修复注入 LLM；可为工厂以每轮重算（阶段 12：todo 跨消息刷新） */
+  systemPrompt?: string | (() => string);
   signal?: AbortSignal;
   /** 测试注入：替代 process.exit */
   onCorruptionExit?: (code: number) => void;
@@ -140,7 +141,9 @@ export async function runPollLoop(cfg: PollLoopConfig): Promise<void> {
     }, cfg.sleepMs?.hot ?? 500);
 
     try {
-      for await (const ev of cfg.provider.query({ prompt, routing, system: cfg.systemPrompt })) {
+      // 阶段 12：系统提示可为工厂——每轮查询前求值，使 todo_write 更新的清单跨消息可见
+      const system = typeof cfg.systemPrompt === "function" ? cfg.systemPrompt() : cfg.systemPrompt;
+      for await (const ev of cfg.provider.query({ prompt, routing, system })) {
         if (ev.type === "activity") touchHeartbeat();
         if (ev.type === "progress") {
           // fix-plan 流式：首增量写首条消息，之后按节流写 edit（in_reply_to 指向首条，供宿主解析编辑目标）
