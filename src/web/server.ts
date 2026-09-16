@@ -1,19 +1,23 @@
 /**
  * web/server.ts —— Web 管理控制台 HTTP 服务（REST + SSE + 静态前端）
  *
- * 职责：node http server；/api/* 经 api.ts；/events SSE 订阅事件总线；/ 静态前端（static/）。
- * 关键导出：startWebServer, stopWebServer
- * 承重不变量：动作面只经 dispatch/既有守卫；未配置 WEB_TOKEN 时仅本机信任（文档声明）。
+ * 职责：node http server；/health 存活探针；/api/* 经 api.ts；/events SSE 订阅事件总线；/ 静态前端（static/）。
+ * 关键导出：startWebServer, stopWebServer, resolveStaticDir
+ * 承重不变量：动作面只经 dispatch/既有守卫；未配置 WEB_TOKEN 时仅本机信任（文档声明）；
+ *   /health 不鉴权但只回 {ok:true}，不泄露版本/路径/计数；监听地址由 WEB_HOST 决定，
+ *   默认 127.0.0.1，绑非回环且无 WEB_TOKEN 时启动告警（静态外壳会对外可达）。
  *
  * 修改记录：
  *   2026-08-13 创建（阶段 9）
  *   2026-08-13 阶段 14：SSE 401 / 静态 404 / 500 错误接入 i18n
+ *   2026-09-16 新增 /health 存活探针（docker-compose healthcheck 此前打的是一个不存在的端点）；
+ *              监听地址改为可配置 WEB_HOST（此前硬编 127.0.0.1，容器内发布端口从宿主不可达）
  */
 import { createServer, type Server } from "node:http";
 import { readFileSync, existsSync, statSync } from "node:fs";
 import { resolve as resolvePath, extname, sep } from "node:path";
 import { fileURLToPath } from "node:url";
-import { WEB_PORT, PROJECT_ROOT } from "../config.js";
+import { WEB_PORT, WEB_HOST, WEB_TOKEN, PROJECT_ROOT } from "../config.js";
 import { onHostStart, onHostShutdown } from "../host-lifecycle.js";
 import { handleApiRequest, authorized } from "./api.js";
 import { subscribeWebEvents, registerWebHooks } from "./events.js";
@@ -52,6 +56,13 @@ export function startWebServer(port: number = WEB_PORT): Promise<number> {
       const url = new URL(req.url ?? "/", "http://localhost");
       const locale = negotiateLocale(req.headers["accept-language"], resolveLocaleFromEnv());
       try {
+        // 存活探针：不鉴权（编排器的 healthcheck 无法带 Bearer），也绝不泄露信息——
+        // 只回 {ok:true}，不含版本/路径/计数。放在 handleApiRequest 之前，避免被 /api/* 吞掉。
+        if (url.pathname === "/health") {
+          res.writeHead(200, { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" });
+          res.end('{"ok":true}');
+          return;
+        }
         if (await handleApiRequest(req, res, url)) return;
         if (url.pathname === "/events") {
           // P1-2 修复：SSE 数据面同样鉴权
@@ -90,9 +101,14 @@ export function startWebServer(port: number = WEB_PORT): Promise<number> {
         res.end(JSON.stringify({ error: t("api.err.internal", locale), code: "api.err.internal" }));
       }
     });
-    srv.listen(port, "127.0.0.1", () => {
+    srv.listen(port, WEB_HOST, () => {
       const actual = (srv.address() as { port: number }).port;
-      log.info(`web console listening: http://127.0.0.1:${actual}`);
+      log.info(`web console listening: http://${WEB_HOST}:${actual}`);
+      if (WEB_HOST !== "127.0.0.1" && WEB_HOST !== "localhost" && !WEB_TOKEN) {
+        // 非回环绑定 + 未显式配置 WEB_TOKEN：/api/* 与 /events 仍按 remoteAddress 只放行回环，
+        // 但静态前端外壳会对外可达。提示运维显式决策，而不是静默暴露。
+        log.warn("web console bound to a non-loopback address without WEB_TOKEN; static shell is publicly reachable");
+      }
       server = srv;
       serverPort = actual;
       srv.on("error", (err) => log.error("web server error", { err })); // P2-9 修复：listen 后错误改 log
