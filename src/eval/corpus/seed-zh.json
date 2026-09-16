@@ -1,6 +1,12 @@
 {
   "domain": "refund",
   "doc": "退款政策",
+  "domainDocs": {
+    "refund": ["退款政策"],
+    "attendance": ["考勤制度"],
+    "expense": ["报销制度"],
+    "cross": ["考勤制度", "报销制度"]
+  },
   "cases": [
     { "id": "rf-01", "question": "如何申请退款", "expectedAnswer": "设置页 提交 退款申请" },
     { "id": "rf-02", "question": "退款多久到账", "expectedAnswer": "三个工作日" },
@@ -15,6 +21,12 @@
     { "id": "ex-02", "domain": "expense", "question": "报销审批链是什么", "expectedAnswer": "直属上级 财务" },
     { "id": "ex-03", "domain": "expense", "question": "报销上限按什么划分", "expectedAnswer": "职级" },
     { "id": "ex-04", "domain": "expense", "question": "差旅报销要什么票据", "expectedAnswer": "发票必填" },
+    {
+      "id": "cr-01",
+      "domain": "cross",
+      "question": "请假流程和差旅报销分别要怎么走",
+      "expectedAnswer": "请假 提前一天 报销 发票"
+    },
     { "id": "od-01", "domain": "other", "question": "今天天气怎么样", "outOfDomain": true },
     { "id": "od-02", "domain": "other", "question": "量子计算原理", "outOfDomain": true },
     { "id": "od-03", "domain": "other", "question": "推荐一部电影", "outOfDomain": true }
