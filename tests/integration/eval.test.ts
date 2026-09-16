@@ -1,7 +1,10 @@
 /**
  * eval.test.ts —— 评估体系测试（指标/判分/runner/语料确定性/trace/CLI eval）
  *
- * 修改记录：2026-08-13 创建（阶段 12）
+ * 修改记录：
+ *   2026-08-13 创建（阶段 12）
+ *   2026-09-16 补 recallAtK 语义测试：多相关文档下与 hitRate 区分、单文档下数学退化、hits 去重、
+ *              域外用例不计入；补语料按 domain 标注的回归测试；runner 断言随标注修复收紧到 hitRate=1
  */
 import { describe, expect, it, beforeEach, afterEach } from "vitest";
 import { closeDb, initTestDb, runMigrations } from "../../src/db/index.js";
@@ -56,6 +59,61 @@ describe("retrieval metrics", () => {
     expect(m.hitRate).toBe(0.5);
     expect(m.mrr).toBeCloseTo((1 + 0) / 2);
   });
+
+  it("多相关文档标注下 recallAtK 与 hitRate 区分", () => {
+    // m1 相关文档 {退款政策, 考勤制度}，top-3 只捞回退款政策 → hitRate 记 1（至少命中一个），recall 记 1/2
+    // m2 相关文档 {报销制度}，top-3 未命中 → 两者都记 0
+    const cases = [
+      { id: "m1", domain: "d", question: "q1", expectedDocs: ["退款政策", "考勤制度"] },
+      { id: "m2", domain: "d", question: "q2", expectedDocs: ["报销制度"] },
+    ];
+    const m = computeRetrievalMetrics(
+      cases,
+      [
+        { caseId: "m1", hits: ["退款政策", "报销制度"] },
+        { caseId: "m2", hits: ["考勤制度"] },
+      ],
+      3,
+    );
+    expect(m.hitRate).toBe(0.5); // (1 + 0) / 2
+    expect(m.recallAtK).toBe(0.25); // (1/2 + 0/1) / 2
+    expect(m.mrr).toBe(0.5); // (1/1 + 0) / 2
+    expect(m.recallAtK).not.toBe(m.hitRate);
+  });
+
+  it("单相关文档标注时 recallAtK 退化为 hitRate（数学等价，非缺陷）", () => {
+    const cases = [
+      { id: "s1", domain: "d", question: "q1", expectedDoc: "退款政策" },
+      { id: "s2", domain: "d", question: "q2", expectedDoc: "考勤制度" },
+    ];
+    const m = computeRetrievalMetrics(
+      cases,
+      [
+        { caseId: "s1", hits: ["退款政策"] },
+        { caseId: "s2", hits: ["报销制度"] },
+      ],
+      3,
+    );
+    expect(m.hitRate).toBe(0.5);
+    expect(m.recallAtK).toBe(m.hitRate);
+  });
+
+  it("hits 去重后再算交集，重复返回同一文档不虚增召回", () => {
+    const cases = [{ id: "d1", domain: "d", question: "q", expectedDocs: ["退款政策", "考勤制度"] }];
+    const m = computeRetrievalMetrics(cases, [{ caseId: "d1", hits: ["退款政策", "退款政策", "退款政策"] }], 3);
+    expect(m.recallAtK).toBe(0.5); // 只捞回 1/2，不是 3/2
+    expect(m.hitRate).toBe(1);
+  });
+
+  it("域外用例不参与检索指标（考核拒答而非召回）", () => {
+    const cases = [
+      { id: "o1", domain: "d", question: "q", expectedDocs: ["退款政策"], outOfDomain: true },
+      { id: "o2", domain: "d", question: "q", expectedDoc: "考勤制度" },
+    ];
+    const m = computeRetrievalMetrics(cases, [{ caseId: "o2", hits: ["考勤制度"] }], 3);
+    expect(m.hitRate).toBe(1); // 分母只有 o2
+    expect(m.recallAtK).toBe(1);
+  });
 });
 
 describe("judges", () => {
@@ -92,6 +150,31 @@ describe("corpus generator", () => {
     expect(a).toEqual(b);
     expect(a.length).toBeGreaterThan(loadSeedCorpus().length);
   });
+
+  it("按用例自身 domain 标注相关文档，不再整份继承顶层 doc", () => {
+    const cases = loadSeedCorpus();
+    expect(cases.find((c) => c.id === "rf-01")?.expectedDocs).toEqual(["退款政策"]);
+    expect(cases.find((c) => c.id === "at-01")?.expectedDocs).toEqual(["考勤制度"]);
+    expect(cases.find((c) => c.id === "ex-01")?.expectedDocs).toEqual(["报销制度"]);
+  });
+
+  it("跨领域用例携带多相关文档标注（让 recallAtK 可与 hitRate 区分）", () => {
+    const cross = loadSeedCorpus().find((c) => c.id === "cr-01");
+    expect(cross?.expectedDocs?.length).toBeGreaterThan(1);
+  });
+
+  it("域外用例不带相关文档标注", () => {
+    const od = loadSeedCorpus().find((c) => c.id === "od-01");
+    expect(od?.outOfDomain).toBe(true);
+    expect(od?.expectedDocs).toBeUndefined();
+  });
+
+  it("扩展后的改写用例继承原用例的相关文档标注", () => {
+    const expanded = expandCorpus();
+    const base = expanded.find((c) => c.id === "at-01");
+    const rewrite = expanded.find((c) => c.id === "at-01-p1");
+    expect(rewrite?.expectedDocs).toEqual(base?.expectedDocs);
+  });
 });
 
 describe("rag eval runner", () => {
@@ -104,9 +187,12 @@ describe("rag eval runner", () => {
       judge: new MockJudge(),
     });
     expect(report.corpusSize).toBe(cases.length);
-    expect(report.retrieval.hitRate).toBeGreaterThan(0.5);
+    // 语料标注按 domain 解析后，检索器对这个 3 文档 KB 应全命中（修复前因标注错误只有 0.538）
+    expect(report.retrieval.hitRate).toBe(1);
+    expect(report.retrieval.mrr).toBeGreaterThan(0.9);
     expect(report.refusal.total).toBeGreaterThan(0);
     expect(report.refusal.correct).toBe(report.refusal.total); // 域外全拒答
+    expect(report.failures).toEqual([]);
   });
 });
 
