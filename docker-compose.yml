@@ -1,12 +1,57 @@
-# OC Docker Compose 编排
+# docker-compose.yml —— OC 容器化编排
 #
-# 用途：一键启动 OC 主机 + 可选依赖（Redis 缓存、PostgreSQL 外部 DB）。
-# 用法：docker compose up -d
-# 借鉴：Docker Compose 最佳实践（healthcheck 依赖顺序、restart policy）
+# 用途：把 OC 主机跑在容器里（Linux / macOS）。Windows 请直接用原生方式启动，见下方「平台边界」。
+# 用法：
+#   export OC_REPO_DIR="$(pwd)"      # 必须是仓库在【宿主】上的绝对路径
+#   pnpm build:container             # 先在宿主上构建 Agent 镜像（主机容器内也可跑，但更慢）
+#   docker compose up -d
+#   curl -fsS http://127.0.0.1:8080/health
 #
-# 修改记录：2026-08-24 创建（阶段 11 五、文档之外可扩展方向）
-
-version: "3.9"
+# ─────────────────────────────────────────────────────────────────────────────
+# 承重约束：为什么必须传 OC_REPO_DIR，而不是简单挂 ./data:/app/data
+# ─────────────────────────────────────────────────────────────────────────────
+# 主机通过 docker socket spawn Agent 容器，并把会话目录以 bind-mount 交给它
+# （src/container-runner.ts buildMounts）。那些 -v 参数里的路径由【宿主上的 daemon】解析，
+# 不是由主机进程所在的容器解析。
+#
+# 所以如果主机容器里 DATA_DIR=/app/data，daemon 会去宿主的 /app/data 找——那儿什么都没有，
+# Docker 便自动创建一个 root 属主的空目录。结果：Agent 容器拿到空 workspace，没有 inbound.db，
+# 消息永远送不到，而且【不报错】。这是本项目容器化最容易踩的坑。
+#
+# 解法是让「容器内路径」与「宿主路径」逐字相同：把 ./data 挂到 ${OC_REPO_DIR}/data，
+# 并用 OC_DATA_DIR / OC_GROUPS_DIR 告诉主机用同一个绝对路径。这样主机进程看到的路径、
+# 和它交给 daemon 的路径、和 daemon 在宿主上解析的路径，三者一致。
+#
+# 注意 GROUPS_DIR 必须走 OC_GROUPS_DIR：它和 DATA_DIR 一样会被原样传进 -v。
+# templates 与 .env 只被主机进程自己读、不进 Agent 容器，用镜像内路径 /app/... 即可。
+#
+# ─────────────────────────────────────────────────────────────────────────────
+# 平台边界
+# ─────────────────────────────────────────────────────────────────────────────
+# Linux / macOS：OC_REPO_DIR="$(pwd)" 直接可用。
+# Windows（Docker Desktop + WSL2）：宿主路径 D:\foo 在 daemon 侧是 /run/desktop/mnt/host/d/foo，
+#   PowerShell 的 $PWD 给出的是 Windows 形式，不能直接当容器内路径用。要么显式设
+#   OC_REPO_DIR=/run/desktop/mnt/host/d/... 并保证 ./data 挂到同一路径，要么——推荐——
+#   直接原生运行主机：`pnpm install && pnpm setup && pnpm build:container && pnpm start`。
+#   原生运行也是本项目的默认部署形态（与基线 nanoclaw 用 launchd/systemd 一致）。
+#
+# ─────────────────────────────────────────────────────────────────────────────
+# 已移除的服务
+# ─────────────────────────────────────────────────────────────────────────────
+# redis：代码里没有任何 Redis 客户端（package.json 无该依赖）。限流走的是
+#   src/modules/quota.ts 的「滑动窗口 + SQLite」实现，其文件头明确写了「不依赖 Redis」。
+#   挂一个没人连的 redis 服务只会让人误以为它是架构的一部分，故移除。
+#
+# 修改记录：
+#   2026-08-24 创建（阶段 11 五、文档之外可扩展方向）
+#   2026-09-16 修复五处从未被验证过的缺陷：
+#              (1) build.dockerfile 指向不存在的根 Dockerfile → 补 Dockerfile + .dockerignore；
+#              (2) healthcheck 打 /health，但该端点不存在 → web/server.ts 补 /health；
+#              (3) 主机硬绑 127.0.0.1，发布的端口从宿主不可达 → 新增 WEB_HOST，此处设 0.0.0.0；
+#              (4) ./templates 目录不存在，Docker 会以 root 属主自动创建 → 补 templates/README.md；
+#              (5) ./data:/app/data 的路径映射与 daemon 解析不一致（见上方承重约束）
+#                  → 改为同绝对路径挂载 + OC_DATA_DIR/OC_GROUPS_DIR；
+#              另移除代码从未使用的 redis 服务，并删除 Compose v2 已废弃的 version 字段。
 
 services:
   oc-host:
@@ -17,43 +62,39 @@ services:
     container_name: oc-host
     restart: unless-stopped
     ports:
-      - "8080:8080"
+      - "${WEB_PORT:-8080}:8080"
     volumes:
-      - ./data:/app/data
-      - ./groups:/app/groups
+      # 同绝对路径挂载：源是宿主相对路径，目标是宿主上的同一绝对路径（见头部承重约束）
+      - ./data:${OC_REPO_DIR:-${PWD}}/data
+      - ./groups:${OC_REPO_DIR:-${PWD}}/groups
+      # 只被主机进程自己读，不进 Agent 容器
       - ./templates:/app/templates
       - ./.env:/app/.env:ro
+      # 主机要 spawn Agent 容器。代价：容器内进程获得对宿主 daemon 的完全控制权，
+      # 等价于 root。这是"主机能起容器"的固有代价，也是推荐原生运行主机的原因之一。
       - /var/run/docker.sock:/var/run/docker.sock
     environment:
       - APP_ENV=prod
       - WEB_PORT=8080
+      # 必须：默认 127.0.0.1 只绑容器内回环，ports 发布了也从宿主连不上
+      - WEB_HOST=0.0.0.0
+      # 未设 WEB_TOKEN 时 api.ts 按 remoteAddress 只放行回环，非回环请求一律 401；
+      # 但静态前端外壳不鉴权，对外网暴露请设置 WEB_TOKEN 并置于反向代理之后。
+      - WEB_TOKEN=${WEB_TOKEN:-}
+      # 这两个必须是【宿主】绝对路径，且与上面的挂载目标逐字一致
+      - OC_DATA_DIR=${OC_REPO_DIR:-${PWD}}/data
+      - OC_GROUPS_DIR=${OC_REPO_DIR:-${PWD}}/groups
+      - TZ=${TZ:-UTC}
+      - OC_LOCALE=${OC_LOCALE:-}
     healthcheck:
-      test: ["CMD", "node", "-e", "require('http').get('http://localhost:8080/health', r => process.exit(r.statusCode === 200 ? 0 : 1))"]
+      # /health 不鉴权且只回 {"ok":true}（web/server.ts），适合做存活探针
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8080/health"]
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 10s
+      start_period: 20s
     networks:
       - oc-net
-
-  redis:
-    image: redis:7-alpine
-    container_name: oc-redis
-    restart: unless-stopped
-    volumes:
-      - redis-data:/data
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 10s
-      timeout: 5s
-      retries: 3
-    networks:
-      - oc-net
-    profiles:
-      - cache
-
-volumes:
-  redis-data:
 
 networks:
   oc-net:
