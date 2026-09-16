@@ -4,13 +4,17 @@
  * 职责：路径/镜像/资源限额/出口封锁/时区/provider 默认；.env 优先、process.env 兜底。
  * 关键导出：DATA_DIR, GROUPS_DIR, STORE_DIR, TEMPLATES_DIR, MOUNT_ALLOWLIST_PATH,
  *           CONTAINER_IMAGE, CONTAINER_CPU_LIMIT, CONTAINER_MEMORY_LIMIT, CONTAINER_PIDS_LIMIT,
- *           EGRESS_LOCKDOWN, EGRESS_NETWORK, TIMEZONE, DEFAULT_AGENT_PROVIDER, WEB_PORT, ENV_PATH
+ *           EGRESS_LOCKDOWN, EGRESS_NETWORK, TIMEZONE, DEFAULT_AGENT_PROVIDER, WEB_PORT, WEB_HOST, ENV_PATH
  * 承重不变量：MOUNT_ALLOWLIST_PATH 在项目根之外（防容器自改规则）；秘密经 readEnvFile 白名单读取。
  * 借鉴：nanoclaw src/config.ts
  *
  * 修改记录：
  *   2026-08-12 创建（阶段 2）
  *   2026-08-13 阶段 14：OC_LOCALE 纳入 .env 白名单并导出（P1-1 修复）
+ *   2026-09-16 新增 WEB_HOST（默认 127.0.0.1，保持 fail-closed）：容器化部署需绑 0.0.0.0，
+ *              否则发布端口从宿主不可达；纳入 .env 白名单
+ *   2026-09-16 GROUPS_DIR 改为可经 OC_GROUPS_DIR 覆盖：容器化部署时该路径会被原样交给
+ *              `docker run -v`，由宿主 daemon 解析，必须是宿主绝对路径而非容器内路径
  */
 import { homedir } from "node:os";
 import { join, dirname } from "node:path";
@@ -35,9 +39,11 @@ const env = readEnvFile(
     "EGRESS_LOCKDOWN",
     "EGRESS_NETWORK",
     "WEB_PORT",
+    "WEB_HOST", // 容器化部署需绑 0.0.0.0，否则发布端口从宿主不可达
     "WEB_TOKEN", // P1 修复（se-inspector）：.env 配置不得被静默忽略
     "OC_LOCALE", // 阶段 14 P1-1 修复（se-inspector）：i18n locale 纳入 .env 白名单
     "OC_DATA_DIR",
+    "OC_GROUPS_DIR", // 容器化部署需指向宿主绝对路径（见 GROUPS_DIR 注释）
   ],
   ENV_PATH,
 );
@@ -47,7 +53,13 @@ const pick = (key: string, fallback: string): string => env[key] ?? process.env[
 export const APP_ENV = pick("APP_ENV", "dev");
 
 export const DATA_DIR = pick("OC_DATA_DIR", join(PROJECT_ROOT, "data"));
-export const GROUPS_DIR = join(PROJECT_ROOT, "groups");
+/**
+ * Agent 组工作区根。可用 OC_GROUPS_DIR 覆盖——容器化部署时**必须**覆盖成宿主上的绝对路径：
+ * 这个路径会被原样交给 `docker run -v <hostPath>:...`，由**宿主上的 daemon** 解析，
+ * 而不是由主机进程所在容器解析。若沿用容器内路径，daemon 会在宿主上自动创建空目录，
+ * Agent 拿到空 workspace（没有 CLAUDE.md / memory / container.json）而静默失效。
+ */
+export const GROUPS_DIR = pick("OC_GROUPS_DIR", join(PROJECT_ROOT, "groups"));
 /** 会话双 DB 存放根：data/v2-sessions/<agent_group_id>/<session_id>/ */
 export const STORE_DIR = join(DATA_DIR, "v2-sessions");
 export const TEMPLATES_DIR = join(PROJECT_ROOT, "templates");
@@ -74,6 +86,15 @@ export const TIMEZONE = resolveTimezone([env["TZ"], process.env["TZ"]]);
 export const DEFAULT_AGENT_PROVIDER = pick("DEFAULT_AGENT_PROVIDER", "claude");
 
 export const WEB_PORT = Number(pick("WEB_PORT", "8080"));
+/**
+ * Web 控制台监听地址。默认 127.0.0.1（fail-closed：只有本机可达）。
+ * 容器化部署必须显式设成 0.0.0.0，否则服务只绑定容器内回环，发布的端口从宿主不可达。
+ * 设成 0.0.0.0 时的实际暴露面：/api/* 与 /events 仍受 authorized() 保护（未配 WEB_TOKEN 时
+ * 按 remoteAddress 只放行回环，非回环一律 401，见 web/api.ts:69-83）；但静态前端外壳
+ * （index.html/app.js/style.css）不经鉴权，会对全网可达。生产暴露请同时配置 WEB_TOKEN
+ * 并置于反向代理之后。
+ */
+export const WEB_HOST = pick("WEB_HOST", "127.0.0.1");
 /** 可选 Bearer token；未设置 = 本机信任（文档声明） */
 export const WEB_TOKEN = env["WEB_TOKEN"] ?? process.env["WEB_TOKEN"] ?? "";
 
