@@ -3,6 +3,7 @@
  *
  * 修改记录：
  *   2026-08-13 创建（阶段 9）
+ *   2026-09-16 补 /health 存活探针测试（docker-compose healthcheck 此前打的是一个不存在的端点）
  */
 import { describe, expect, it, beforeEach, afterEach } from "vitest";
 import {
@@ -36,6 +37,18 @@ afterEach(() => {
 });
 
 describe("web api", () => {
+  it("/health 存活探针：不鉴权、只回 {ok:true}、不泄露信息", async () => {
+    // 编排器的 healthcheck 无法带 Bearer，所以这个端点必须免鉴权
+    const res = await fetch(`http://127.0.0.1:${port}/health`);
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toContain("application/json");
+    expect(res.headers.get("cache-control")).toBe("no-store");
+    const body = await res.text();
+    expect(body).toBe('{"ok":true}');
+    // 不得泄露版本/路径/计数等任何额外字段
+    expect(Object.keys(JSON.parse(body) as Record<string, unknown>)).toEqual(["ok"]);
+  });
+
   it("serves read-only projections", async () => {
     const g = createAgentGroup({ name: "W", folder: `w-${Math.random().toString(36).slice(2, 6)}` });
     const mg = createMessagingGroup({ channelType: "mock", platformId: "p1" });
