@@ -10,7 +10,9 @@
  *   - 首个认领即终止路由（return true），命令不落 messages_in、不唤醒容器；
  *   - /new 对 outbound session_state 的写属"host-sweep 维护写"同类成文例外（只删历史/continuation 键）。
  *
- * 修改记录：2026-09-01 创建（阶段 15：chat 斜杠命令 + onboarding）
+ * 修改记录：
+ *   2026-09-01 创建（阶段 15：chat 斜杠命令 + onboarding）
+ *   2026-09-16 修复 ESLint no-irregular-whitespace：真实 U+3000 空格改为 \u3000 转义，显示不变；同步 Prettier 换行
  */
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -52,7 +54,7 @@ function handleConfig(session: Session): void {
     [
       "当前配置：",
       `· 组：${group?.name ?? "?"}（${group?.folder ?? "?"}）`,
-      `· 组 provider：${cfg?.provider ?? "(未设置)"}　模型：${cfg?.model ?? "(未设置)"}`,
+      `· 组 provider：${cfg?.provider ?? "(未设置)"}\u3000模型：${cfg?.model ?? "(未设置)"}`,
       `· .env 默认 provider：${envProvider}`,
       `· OPENAI_BASE_URL：${baseUrl}`,
       `· OPENAI_API_KEY：${key}`,
@@ -81,7 +83,12 @@ function handleAgent(session: Session): void {
     const cur = g.id === session.agent_group_id ? "  ← 当前" : "";
     return `· ${g.name}（${g.folder}）provider=${cfg?.provider ?? "?"} model=${cfg?.model ?? "?"}${cur}`;
   });
-  reply(session, ["Agent 组：", ...(lines.length ? lines : ["(无)"]), "", "切换组请用：pnpm oc -- groups list / Web 控制台"].join("\n"));
+  reply(
+    session,
+    ["Agent 组：", ...(lines.length ? lines : ["(无)"]), "", "切换组请用：pnpm oc -- groups list / Web 控制台"].join(
+      "\n",
+    ),
+  );
 }
 
 function handleExport(session: Session): void {
@@ -97,7 +104,10 @@ function handleExport(session: Session): void {
     const dir = join(DATA_DIR, "exports");
     mkdirSync(dir, { recursive: true });
     const file = join(dir, `${session.id}-${Date.now()}.json`);
-    writeFileSync(file, JSON.stringify({ sessionId: session.id, exportedAt: new Date().toISOString(), inbound, outbound }, null, 2));
+    writeFileSync(
+      file,
+      JSON.stringify({ sessionId: session.id, exportedAt: new Date().toISOString(), inbound, outbound }, null, 2),
+    );
     reply(session, `会话已导出：${file}`);
   } catch (err) {
     log.warn("export failed", { err });
@@ -109,7 +119,9 @@ function handleNew(session: Session): void {
   // 清容器会话状态（历史/continuation/回复指针）→ 下一条消息即全新会话（同类 host-sweep 维护写）
   try {
     const db = openOutboundDbRw(outboundDbPath(session.agent_group_id, session.id));
-    db.prepare("DELETE FROM session_state WHERE key LIKE 'history:%' OR key LIKE 'continuation:%' OR key = 'current_in_reply_to' OR key = 'todos'").run();
+    db.prepare(
+      "DELETE FROM session_state WHERE key LIKE 'history:%' OR key LIKE 'continuation:%' OR key = 'current_in_reply_to' OR key = 'todos'",
+    ).run();
     db.close();
     reply(session, "已开始新会话（上下文与子任务清单已清空）。");
   } catch (err) {
@@ -119,8 +131,7 @@ function handleNew(session: Session): void {
 }
 
 export type SetupParse =
-  | { ok: true; provider: string; env: Record<string, string>; model: string }
-  | { ok: false; error: string };
+  { ok: true; provider: string; env: Record<string, string>; model: string } | { ok: false; error: string };
 
 /** 校验 OpenAI 兼容端点：可解析 + 主机名是 localhost/回环/含点 FQDN（拦 "https://api.deepseek" 这类笔误）。 */
 function invalidBaseUrl(url: string): string | null {
@@ -155,7 +166,10 @@ export function parseSetupArgs(arg: string): SetupParse {
       provider = "openai";
       a = parts;
     } else {
-      return { ok: false, error: "未知 provider，可选：openai / claude / ollama / mock；或省略 provider 直接贴 <BASE_URL> <KEY> [模型]" };
+      return {
+        ok: false,
+        error: "未知 provider，可选：openai / claude / ollama / mock；或省略 provider 直接贴 <BASE_URL> <KEY> [模型]",
+      };
     }
   }
   const env: Record<string, string> = { DEFAULT_AGENT_PROVIDER: provider };
@@ -205,7 +219,10 @@ function handleSetup(session: Session, arg: string | null): void {
   const patch: Record<string, string> = { provider };
   if (model) patch.model = model;
   updateContainerConfig(session.agent_group_id, patch as never);
-  reply(session, `已保存 .env（provider=${provider}${model ? ` model=${model}` : ""}），当前组已切换，下一条消息生效。`);
+  reply(
+    session,
+    `已保存 .env（provider=${provider}${model ? ` model=${model}` : ""}），当前组已切换，下一条消息生效。`,
+  );
 }
 
 registerMessageInterceptor(async (event) => {
@@ -239,5 +256,7 @@ registerMessageInterceptor(async (event) => {
   return true; // 认领：终止路由，不唤醒容器
 });
 /*
- * 修改记录：2026-09-01 创建（阶段 15：chat 斜杠命令 + onboarding）
+ * 修改记录：
+ *   2026-09-01 创建（阶段 15：chat 斜杠命令 + onboarding）
+ *   2026-09-16 修复 ESLint no-irregular-whitespace：真实 U+3000 空格改为 \u3000 转义，显示不变；同步 Prettier 换行
  */
