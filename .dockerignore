@@ -1,0 +1,53 @@
+# .dockerignore —— 主机镜像构建上下文排除清单
+#
+# 用途：防止秘密、运行时状态和依赖树进入镜像层或构建上下文。
+# 承重不变量：`.env` 必须排除——它含 provider 密钥；镜像层是不可撤销的，
+#   一旦烘进去，任何能 pull 镜像的人都能读到。运行时由 compose 以只读 bind-mount 注入。
+#   `data/` 与 `groups/` 同样排除：它们是运行时状态（会话双 DB、Agent 工作区），
+#   必须由卷挂载提供，烘进镜像会让容器每次重建都"失忆"。
+#
+# 修改记录：2026-09-16 创建（配合根 Dockerfile）
+
+# 秘密与本地配置
+.env
+.env.*
+!.env.example
+
+# 运行时状态（由卷挂载提供）
+data/
+groups/
+logs/
+store/
+
+# 依赖与构建产物（镜像内重新安装/不需要）
+node_modules/
+**/node_modules/
+dist/
+web/frontend/dist/
+coverage/
+
+# 版本控制与开发过程产物
+.git/
+.github/
+.audit/
+.memory/
+.tasks/
+.team/
+.transcripts/
+
+# 测试与顶层文档（运行时不需要；tsx 按需转译，不预编译）
+tests/
+docs/
+
+# 注意：不要全局排除 *.md —— src/claude-md-compose.ts 运行时要读
+#   container/skills/<name>/instructions.md 与 src/mcp-tools/*.instructions.md 来组合 CLAUDE.md，
+#   container/skills/*/SKILL.md 也要随 container/ 进入镜像供 build:container 使用。
+#   只排除仓库根的说明文档。
+/*.md
+!README.md
+
+# 编辑器与系统
+.DS_Store
+.idea/
+.vscode/
+*.log
