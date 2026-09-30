@@ -137,3 +137,4 @@ registerTools([{
   - package.json：新增 prepare 脚本与 husky devDependency；.husky/pre-commit：提交前执行 format:check（纯 JSON 不便注释，用途在此说明）
   - vitest.config.ts：单 fork 串行化，修复并行 worker 共享测试数据目录导致的偶发崩溃
   - README.md：新增 CI badge、历史说明与修改记录小节
+  - .prettierrc：endOfLine 设为 auto，兼容 autocrlf 的 CRLF 工作区，本地与 CI 格式门禁标准统一
