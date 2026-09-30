@@ -134,8 +134,18 @@ describe("cli channel", () => {
     const adapter = getChannelAdapterExact("cli");
     // 模拟 poll-loop 流式：首条片段 + 两条 edit 增量，均带相同 meta
     await adapter!.deliver("local", null, { kind: "chat", content: "我", meta: { agent: "g1" } });
-    await adapter!.deliver("local", null, { kind: "chat", content: "我是 OC Agent", operation: "edit", meta: { agent: "g1" } });
-    await adapter!.deliver("local", null, { kind: "chat", content: "我是 OC Agent 助手，可以帮你完成各类任务", operation: "edit", meta: { agent: "g1" } });
+    await adapter!.deliver("local", null, {
+      kind: "chat",
+      content: "我是 OC Agent",
+      operation: "edit",
+      meta: { agent: "g1" },
+    });
+    await adapter!.deliver("local", null, {
+      kind: "chat",
+      content: "我是 OC Agent 助手，可以帮你完成各类任务",
+      operation: "edit",
+      meta: { agent: "g1" },
+    });
     await new Promise((r) => setTimeout(r, 200));
     const frames = got
       .trim()
@@ -152,4 +162,3 @@ describe("cli channel", () => {
  * 修改记录：
  *   2026-08-25 阶段 12：CLI 渲染纯函数测试 + 帧协议集成测试
  */
-

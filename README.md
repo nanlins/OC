@@ -1,5 +1,7 @@
 # OC —— 个人 AI 助手平台
 
+[![CI](https://github.com/nanlins/OC/actions/workflows/ci.yml/badge.svg)](https://github.com/nanlins/OC/actions/workflows/ci.yml)
+
 > 用途：OC 项目入口文档——项目简介、快速开始、配置说明、使用示例、架构说明。
 > 基线：`nanoclaw` v2（GitHub nanocoai/nanoclaw），从 0 到 1 复刻核心架构并自主扩展。
 
@@ -121,3 +123,17 @@ registerTools([{
 | `container/agent-runner/` | 容器 Agent 引擎（Bun）：poll-loop/provider/MCP 工具/技能/记忆 |
 | `web/frontend/` | React 管理控制台 |
 | `scripts/` | chat / setup / 运维脚本 |
+
+## 历史说明
+
+本仓库早期历史中存在机器化提交形态：2026-08-19 21:15~21:19 连续分钟级爆发 59/60/69/80 个 commit（逐文件提交规程产物）。
+该形态源于当时执行的"逐文件提交"自动化规程，不代表真实开发节奏，也不反映代码来源的全部事实；
+自 2026-09-29 起已改为功能分支 + 逻辑分组提交 + squash 合并，并以 CI 门禁（测试/lint/格式/构建）作为合并前提。
+
+## 修改记录
+
+- 2026-09-29：
+  - 全仓 prettier --write 统一格式（180 个文件），恢复 CI format:check 门禁绿色
+  - package.json：新增 prepare 脚本与 husky devDependency；.husky/pre-commit：提交前执行 format:check（纯 JSON 不便注释，用途在此说明）
+  - vitest.config.ts：单 fork 串行化，修复并行 worker 共享测试数据目录导致的偶发崩溃
+  - README.md：新增 CI badge、历史说明与修改记录小节

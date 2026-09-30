@@ -233,4 +233,3 @@ registerChannelAdapter("cli", { factory: () => createCliAdapter(), defaults: CLI
  * 修改记录：
  *   2026-08-25 阶段 12：CLI 聊天界面（meta/tool/end 帧协议 + TUI 渲染）
  */
-

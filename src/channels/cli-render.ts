@@ -79,7 +79,8 @@ export function renderTool(
   tick: number = 0,
   args?: string | null,
 ): string {
-  const suffix = status !== "running" && elapsedMs !== undefined ? kleur.gray(`  ${(elapsedMs / 1000).toFixed(1)}s`) : "";
+  const suffix =
+    status !== "running" && elapsedMs !== undefined ? kleur.gray(`  ${(elapsedMs / 1000).toFixed(1)}s`) : "";
   const cmd = args ? kleur.cyan(`  $ ${args}`) : "";
   return `${TOOL_PREFIX}${toolStatusGlyph(status, tick)} ${kleur.dim(tool)}${suffix}${cmd}`;
 }
@@ -113,4 +114,3 @@ export function renderFrame(frame: CliFrame, tick: number = 0): string[] {
  * 修改记录：
  *   2026-08-25 阶段 12：CLI 聊天界面（meta/tool/end 帧协议 + TUI 渲染）
  */
-

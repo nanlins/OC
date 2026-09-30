@@ -3,6 +3,7 @@
 // 修改记录：
 //   2026-08-12 创建（阶段 0）
 //   2026-08-12 阶段 2：test.env 注入 OPENCLAW_DATA_DIR 隔离测试数据目录
+//   2026-09-29 单 fork 串行化，修复并行 worker 共享测试数据目录导致的偶发崩溃
 import { defineConfig } from "vitest/config";
 
 export default defineConfig({
@@ -10,6 +11,9 @@ export default defineConfig({
     include: ["tests/**/*.test.ts"],
     exclude: ["node_modules/**", "dist/**", "container/**"],
     testTimeout: 10000,
+    // 单 fork 串行：多 fork 并行时共享 OC_DATA_DIR 的 SQLite 文件锁竞争曾导致 worker 意外退出（flake），串行换取确定性
+    pool: "forks",
+    poolOptions: { forks: { singleFork: true } },
     // 测试数据目录与项目 data/ 隔离（config.ts 加载期读取）；WEB_TOKEN 固定供测试鉴权（fix-plan P0 fail-closed）
     env: {
       OC_DATA_DIR: `${process.env.TEMP ?? "/tmp"}/oc-test-data`,

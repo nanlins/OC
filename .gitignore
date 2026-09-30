@@ -28,3 +28,9 @@ data/upgrade-state.json
 
 # Web 前端构建产物
 web/dist/
+
+# husky 运行期目录（pre-commit 钩子本体 .husky/pre-commit 仍入库）
+.husky/_
+
+# 修改记录：
+#   2026-09-29 新增 .husky/_ 排除，防止 husky 运行期文件入库

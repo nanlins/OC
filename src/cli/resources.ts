@@ -275,7 +275,9 @@ export function registerAllResources(): void {
         const inbound = openInboundDb(inboundDbPath(s.agent_group_id, s.id));
         try {
           n += inbound
-            .prepare("UPDATE messages_in SET status = 'paused' WHERE kind = 'task' AND status = 'pending' AND (series_id = ? OR id = ?)")
+            .prepare(
+              "UPDATE messages_in SET status = 'paused' WHERE kind = 'task' AND status = 'pending' AND (series_id = ? OR id = ?)",
+            )
             .run(args.id, args.id).changes;
         } finally {
           inbound.close();
@@ -299,7 +301,9 @@ export function registerAllResources(): void {
         const inbound = openInboundDb(inboundDbPath(s.agent_group_id, s.id));
         try {
           n += inbound
-            .prepare("UPDATE messages_in SET status = 'pending' WHERE kind = 'task' AND status = 'paused' AND (series_id = ? OR id = ?)")
+            .prepare(
+              "UPDATE messages_in SET status = 'pending' WHERE kind = 'task' AND status = 'paused' AND (series_id = ? OR id = ?)",
+            )
             .run(args.id, args.id).changes;
         } finally {
           inbound.close();

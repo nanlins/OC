@@ -457,7 +457,11 @@ export function getContainerToolState(outbound: Database.Database): {
       | undefined;
     if (!row) return { current_tool: null, tool_declared_timeout_ms: null, current_tool_args: null };
     const bashTimeout = row.current_tool === "Bash" ? row.tool_declared_timeout_ms : null;
-    return { current_tool: row.current_tool, tool_declared_timeout_ms: bashTimeout, current_tool_args: row.current_tool_args ?? null };
+    return {
+      current_tool: row.current_tool,
+      tool_declared_timeout_ms: bashTimeout,
+      current_tool_args: row.current_tool_args ?? null,
+    };
   } catch {
     return { current_tool: null, tool_declared_timeout_ms: null, current_tool_args: null };
   }
