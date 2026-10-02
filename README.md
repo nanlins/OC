@@ -34,6 +34,13 @@ pnpm chat
 
 不想用交互向导时，可手动复制 `.env.example` 为 `.env` 填写（见配置说明），免 key 体验可在建组时 `--provider mock`。
 
+## 基础设施与端口
+
+- **无 Redis / 无 PostgreSQL**：中央库与会话库都用 better-sqlite3（`data/` 目录），无需外部数据库（compose 里 redis 已注释，配额模块默认走 SQLite）
+- **Docker**：每个会话运行在独立 Agent 容器中（`pnpm build:container` 构建镜像，宿主按会话 spawn/销毁容器）
+- **端口**：Web 控制台默认 `8080`（`WEB_PORT` 可改）；Agent 容器经宿主 `llm-proxy` 网关转发，密钥不进容器
+- **运行时**：Node ≥ 20 + pnpm（宿主）；容器侧测试用 Bun
+
 ## 配置说明
 
 秘密只进 `.env`（0600）或进程外注入，不回显、不进 docker argv。三种配置方式（任选）：
@@ -138,3 +145,5 @@ registerTools([{
   - vitest.config.ts：单 fork 串行化，修复并行 worker 共享测试数据目录导致的偶发崩溃
   - README.md：新增 CI badge、历史说明与修改记录小节
   - .prettierrc：endOfLine 设为 auto，兼容 autocrlf 的 CRLF 工作区，本地与 CI 格式门禁标准统一
+
+- 2026-10-02：补充基础设施与端口说明（无 Redis/PG、SQLite、WEB_PORT 8080）
