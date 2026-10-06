@@ -81,6 +81,15 @@ export function markFailed(ids: string[]): void {
   writeAcks(ids, "failed");
 }
 
+/**
+ * P0-3：pre-task 脚本门控拒绝（script-skip）。写 status='script-skip:error'，
+ * 宿主 syncProcessingAcks 会把它映射为 messages_in.status='failed'——跳过的是"这次运行"，
+ * 不阻塞同 series 的下一次 re-arm。
+ */
+export function markScriptSkip(ids: string[]): void {
+  writeAcks(ids, "script-skip:error");
+}
+
 function writeAcks(ids: string[], status: string): void {
   const db = getOutboundDb();
   const now = new Date().toISOString();

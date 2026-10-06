@@ -1,33 +1,42 @@
 /**
  * modules/chat-commands.ts —— 聊天斜杠命令（宿主侧拦截器，阶段 15）
  *
- * 职责：拦截 CLI 聊天斜杠命令 /config /model /agent /export /new，宿主侧直接执行并回写
+ * 职责：拦截 CLI 聊天斜杠命令 /config /model /agent /export /new /clear /setup，宿主侧直接执行并回写
  *       chat 回复（不唤醒容器）。借鉴 opencode/aichat/aider 的 REPL 命令集形态：
  *       - /model（aider）、/export /session（aichat）、/config（claude-code）、/new（opencode）。
- * 关键导出：无（副作用自注册 registerMessageInterceptor）
+ * 关键导出：resolveCliSession, parseSetupArgs（其余为副作用自注册 registerMessageInterceptor）
  * 承重不变量：
  *   - 仅认领 senderId=cli:local（本地可信通道），渠道消息绝不触发管理命令；
  *   - 首个认领即终止路由（return true），命令不落 messages_in、不唤醒容器；
- *   - /new 对 outbound session_state 的写属"host-sweep 维护写"同类成文例外（只删历史/continuation 键）。
+ *   - 作用会话由 resolveCliSession 按 router 同一套链路解析（CLI 通道身份固定 → 结果确定），
+ *     绝不全局猜"最近活跃会话"；解析不到即放行，不静默吞命令；
+ *   - 上下文清空的范围由 session-manager.clearSessionContext 单点定义（/new 与 /clear 与
+ *     oc sessions clear 三处共用），本文件不得自行拼 session_state 的 DELETE。
  *
  * 修改记录：
  *   2026-09-01 创建（阶段 15：chat 斜杠命令 + onboarding）
  *   2026-09-16 修复 ESLint no-irregular-whitespace：真实 U+3000 空格改为 \u3000 转义，显示不变；同步 Prettier 换行
+ *   2026-10-06 P1-2：补 /clear（TUI 帮助一直广告它但主机侧没有），与 /new 同义同实现；
+ *              P1-3：latestSession 全局猜测 → resolveCliSession 按 router 链路解析；
+ *              handleNew 改用 clearSessionContext（消除与 sessions clear 的重复 SQL）
  */
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { registerMessageInterceptor } from "../router.js";
-import { listSessions } from "../db/sessions.js";
+import { CLI_CHANNEL_TYPE, CLI_PLATFORM_ID, CLI_INSTANCE } from "../channels/cli.js";
+import { findSession } from "../db/sessions.js";
 import { getAgentGroup, listAgentGroups } from "../db/agent-groups.js";
+import { getMessagingGroupWithAgentCount, listWirings } from "../db/messaging-groups.js";
 import { getContainerConfig, ensureContainerConfig, updateContainerConfig } from "../db/container-configs.js";
-import { writeOutboundDirectFor, inboundDbPath, outboundDbPath } from "../session-manager.js";
-import { openInboundDb, openOutboundDb, openOutboundDbRw } from "../db/session-db.js";
+import { writeOutboundDirectFor, inboundDbPath, outboundDbPath, clearSessionContext } from "../session-manager.js";
+import { openInboundDb, openOutboundDb } from "../db/session-db.js";
 import { readEnvValue, upsertEnv, maskKey } from "../env-write.js";
 import { DATA_DIR } from "../config.js";
 import { log } from "../log.js";
 import type { Session } from "../types.js";
 
-const COMMANDS = new Set(["/config", "/model", "/agent", "/export", "/new", "/setup"]);
+/** /clear 与 /new 同义（都是"清空当前会话上下文"）；TUI 帮助两者都列，实现必须都在。 */
+const COMMANDS = new Set(["/config", "/model", "/agent", "/export", "/new", "/clear", "/setup"]);
 
 function reply(session: Session, text: string): void {
   writeOutboundDirectFor(session, {
@@ -39,8 +48,30 @@ function reply(session: Session, text: string): void {
   });
 }
 
-function latestSession(): Session | null {
-  return listSessions().find((s) => s.status === "active") ?? null;
+/**
+ * 解析 TUI 当前真正连着的会话（P1-3 修复）。
+ *
+ * 原实现 `listSessions().find(s => s.status === "active")` 是全局猜测：listSessions 按
+ * last_active DESC 排序，多组/多会话时取到的是"最近有动静的任意会话"，于是 /model 可能
+ * 改到别的组的 container_config、/export 导出别的会话。
+ *
+ * 现改为走 router 的同一套解析链：CLI 通道身份 → messaging_group → 接线（priority DESC）
+ * → findSession(session_mode)。CLI 通道身份是固定的（cli/local/无线程），因此结果确定。
+ * 解析不到即返回 null（绝不回退到全局猜测），由调用方放行给正常路由。
+ */
+export function resolveCliSession(): Session | null {
+  const combo = getMessagingGroupWithAgentCount(CLI_CHANNEL_TYPE, CLI_PLATFORM_ID, CLI_INSTANCE);
+  if (!combo) return null;
+  for (const wiring of listWirings(combo.group.id)) {
+    const session = findSession({
+      agentGroupId: wiring.agent_group_id,
+      messagingGroupId: combo.group.id,
+      threadId: null,
+      sessionMode: wiring.session_mode,
+    });
+    if (session) return session;
+  }
+  return null;
 }
 
 function handleConfig(session: Session): void {
@@ -115,15 +146,11 @@ function handleExport(session: Session): void {
   }
 }
 
+/** /new 与 /clear 同一实现：清空容器侧对话状态（语义单点定义在 session-manager.clearSessionContext）。 */
 function handleNew(session: Session): void {
-  // 清容器会话状态（历史/continuation/回复指针）→ 下一条消息即全新会话（同类 host-sweep 维护写）
   try {
-    const db = openOutboundDbRw(outboundDbPath(session.agent_group_id, session.id));
-    db.prepare(
-      "DELETE FROM session_state WHERE key LIKE 'history:%' OR key LIKE 'continuation:%' OR key = 'current_in_reply_to' OR key = 'todos'",
-    ).run();
-    db.close();
-    reply(session, "已开始新会话（上下文与子任务清单已清空）。");
+    const clearedKeys = clearSessionContext(session);
+    reply(session, `已开始新会话（上下文与子任务清单已清空，清除 ${clearedKeys} 项状态）。`);
   } catch (err) {
     log.warn("new session reset failed", { err });
     reply(session, `重置失败：${String(err)}`);
@@ -230,8 +257,12 @@ registerMessageInterceptor(async (event) => {
   const cmd = text.split(/\s+/)[0] ?? "";
   if (!COMMANDS.has(cmd)) return false;
   if (event.message.senderId !== "cli:local") return false; // 仅本地 CLI 可信通道
-  const session = latestSession();
-  if (!session) return false;
+  const session = resolveCliSession();
+  if (!session) {
+    // 解析不到 CLI 会话：不猜、不静默吞——放行给正常路由（未接线时由 router 记丢弃审计）
+    log.info(`chat command "${cmd}" not claimed: no cli session resolved`);
+    return false;
+  }
   const arg = text.slice(cmd.length).trim() || null;
   switch (cmd) {
     case "/config":
@@ -247,6 +278,7 @@ registerMessageInterceptor(async (event) => {
       handleExport(session);
       break;
     case "/new":
+    case "/clear":
       handleNew(session);
       break;
     case "/setup":

@@ -13,16 +13,18 @@ npm run oc -- <resource> <verb> [--flags]
 
 | 资源 | 动词 | 说明 |
 |------|------|------|
-| `groups` | `list` `get` `create` | Agent 群组管理。`create --name X --folder Y --provider openai` |
+| `groups` | `list` `get` `create` `restart` | Agent 群组管理。`create --name X --folder Y --provider openai` |
 | `messaging-groups` | `list` `get` | 消息群组（只读） |
 | `wirings` | `list` `get` `create` | 接线管理。`create --messaging-group <id> --agent-group <id> --engage pattern` |
 | `users` | `list` `get` | 用户（只读） |
 | `roles` | `list` `grant` `revoke` | 角色管理 |
 | `members` | `list` `add` `remove` | 群组成员 |
-| `sessions` | `list` `get` | 会话（只读） |
-| `tasks` | `list` `cancel` | 任务管理 |
+| `sessions` | `list` `get` `history` `clear` | 会话。`history` 跨会话翻聊天记录；`clear <id>` 清空该会话上下文 |
+| `destinations` | `list` `add` `remove` `verify` | 目的地授权。`add --group <id> --destination <name>`；写后立即重投影并回读校验一致性 |
+| `tasks` | `list` `create` `cancel` `pause` `resume` `delete` | 任务管理 |
 | `approvals` | `list` `get` `resolve` | 审批管理 |
 | `dropped` | `list` | 丢弃消息（只读） |
+| `status` | `get` | 宿主健康（pid/启动时间/instance id/项目根/渠道） |
 | `kb` | `add` `sync` | 知识库。`add --kb X --title Y --text Z`；`sync --kb X --group <id>` |
 | `eval` | `run` `report` | 评估。`run --kb X`；`report` |
 | `help` | -- | 列出所有命令 |
@@ -41,7 +43,7 @@ oc help
 
 ## 2. Web REST API
 
-基础 URL：`http://127.0.0.1:8080`。鉴权：`Authorization: Bearer <token>`（token 在 `data/web-token` 或 `.env` 的 `WEB_TOKEN`）。
+基础 URL：`http://127.0.0.1:8080`。鉴权分两档：未配置 `WEB_TOKEN` 时**仅回环可达**（不需要 token，非本机一律 401）；配置了 `WEB_TOKEN` 则恒需 `Authorization: Bearer <WEB_TOKEN>`。
 
 ### 只读投影
 
@@ -99,18 +101,19 @@ pnpm exec tsx scripts/delete-wiring.ts <wiring-id>
 ## 4. 测试命令
 
 ```bash
-pnpm test                    # 主机 vitest（309 用例）
+pnpm test                    # 主机 vitest（523 通过 / 5 跳过；真实 DeepSeek E2E 需 OC_E2E=1 + 密钥）
 pnpm typecheck               # 主机 tsc --noEmit
 pnpm lint                    # eslint src/ tests/
 pnpm format                  # prettier --write
 pnpm format:check            # prettier --check
+pnpm coverage                # vitest --coverage（@vitest/coverage-v8）
 
 cd container/agent-runner
-bun test                     # 容器测试（38 用例）
+bun test                     # 容器测试（38 通过 / 1 跳过）
 bun run typecheck            # 容器 tsc --noEmit
 
 cd web/frontend
-pnpm test                    # 前端测试（15 用例）
+pnpm test                    # 前端测试（15 通过）
 pnpm build                   # 前端构建
 ```
 

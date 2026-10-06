@@ -32,7 +32,7 @@ import {
 import { heartbeatPath, inboundDbPath, outboundDbPath } from "./session-manager.js";
 import { wakeContainer, killContainer, isContainerRunning } from "./container-runner.js";
 import { ensureEgressNetwork, EgressLockdownError } from "./egress-lockdown.js";
-import { handleRecurrence } from "./modules/scheduling.js";
+import { handleRecurrence } from "./modules/scheduling/index.js";
 import { log } from "./log.js";
 import type { Session } from "./types.js";
 

@@ -45,10 +45,21 @@ export function upsertEnv(kv: Record<string, string>): void {
   }
 }
 
+/**
+ * 密钥脱敏（P1-1 收紧）。
+ *
+ * 原实现露前 6 位（`sk-92c…***`）——对 sk- 前缀的 key 而言，前 6 位里有 3 位是真实
+ * 熵，且前缀本身足以配合日志/截图做关联。改为「前 3 + 后 4」：前 3 位通常只是方案
+ * 标识（sk-），后 4 位够人肉确认"是哪一把"，中间全部隐藏。
+ * 短 key（<= 12 位）任何片段都可能占比过高，一律 ***。
+ */
 export function maskKey(v: string | null): string {
   if (!v) return "(未设置)";
-  return v.length <= 8 ? "***" : `${v.slice(0, 6)}…***`;
+  if (v.length <= 12) return "***";
+  return `${v.slice(0, 3)}...${v.slice(-4)}`;
 }
 /*
- * 修改记录：2026-09-01 创建（阶段 15：chat 斜杠命令 + onboarding）
+ * 修改记录：
+ *   2026-09-01 创建（阶段 15：chat 斜杠命令 + onboarding）
+ *   2026-10-06 P1-1：maskKey 由「前 6 位」收紧为「前 3 + 后 4」，短 key 仍 ***
  */

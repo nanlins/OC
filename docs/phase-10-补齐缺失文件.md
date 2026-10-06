@@ -2,6 +2,11 @@
 
 > 阶段：补齐设计文档要求的所有缺失文件（30 项），同时修复因 OC 替换导致的乱码问题。
 
+> **⚠ 后续变更（2026-10-06，P2-1 死代码清理）**：本阶段补齐的 `src/providers/factory.ts`
+> 与 `src/providers/types.ts` 已删除——两者全仓零 import（`types.ts` 仅被同为死代码的
+> `factory.ts` 引用）。实际生效的 provider 机制是 `provider-container-registry.ts` 的
+> 注册表 + `claude.ts`/`openai.ts`/`ollama.ts` 的副作用自注册。下文清单保留原样作为历史记录。
+
 ## 一、重要决策
 
 | 决策 | 理由 |

@@ -12,6 +12,8 @@
  */
 import type { RunnerConfig } from "../config.ts";
 import type { ToolContext } from "../mcp-tools/registry.ts";
+import { allTools } from "../mcp-tools/registry.ts";
+import { realizeProvider } from "../provider-contracts/index.ts";
 import { ClaudeProvider } from "./claude.ts";
 import { MockProvider } from "./mock.ts";
 import { OpenAICompatProvider } from "./openai.ts";
@@ -27,7 +29,16 @@ export function createProvider(name: string, config: RunnerConfig, ctxFactory: (
   const factory = getProviderFactory(name);
   // P1-6 修复：未知 provider 抛错（拼错配置不得静默变 echo 机器人）
   if (!factory) throw new Error(`unknown provider: ${name} (registered: ${listProviderNames().join(", ")})`);
-  return factory(config, ctxFactory);
+  const provider = factory(config, ctxFactory);
+  // P0-2：realize 解析能力面并注入 provider（provider 不自读配置面）；
+  // 合约缺失 = fail-fast（护栏失效必须可见，不得静默裸跑）。
+  realizeProvider(provider, name, {
+    timezone: config.timezone ?? "UTC",
+    model: config.model ?? null,
+    toolNames: allTools().map((t) => t.name),
+    tone: null,
+  });
+  return provider;
 }
 
 export { registerProvider, getProviderFactory, listProviderNames } from "./registry.ts";

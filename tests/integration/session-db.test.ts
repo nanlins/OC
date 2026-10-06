@@ -13,6 +13,7 @@ import { join } from "node:path";
 import Database from "better-sqlite3";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
+  armTaskAtomically,
   countDueMessages,
   ensureInboundSchema,
   ensureOutboundSchema,
@@ -197,9 +198,57 @@ describe("se-inspector regressions (phase 1)", () => {
   });
 });
 
+describe("P0-1: armTaskAtomically (re-arm atomicity)", () => {
+  const opts = (id: string, series: string) => ({
+    id,
+    kind: "task" as const,
+    content: "task-body",
+    recurrence: "0 9 * * *",
+    seriesId: series,
+    processAfter: "2026-08-13T00:00:00Z",
+    trigger: 1,
+  });
+
+  function armedCount(series: string, statuses: string): number {
+    return (
+      inbound
+        .prepare(`SELECT COUNT(*) AS c FROM messages_in WHERE kind='task' AND series_id=? AND status IN (${statuses})`)
+        .get(series) as { c: number }
+    ).c;
+  }
+
+  it("inserts exactly once: second arm on the same series is a no-op", () => {
+    expect(armTaskAtomically(inbound, opts("a1", "series-a"))).toBe(true);
+    expect(armTaskAtomically(inbound, opts("a2", "series-a"))).toBe(false); // 已有 pending → 拒绝
+    expect(armedCount("series-a", "'pending'")).toBe(1);
+  });
+
+  it("refuses to arm when the series already has a processing row", () => {
+    insertSessionMessage(inbound, { id: "p1", kind: "task", content: "x", seriesId: "series-b" });
+    inbound.prepare("UPDATE messages_in SET status='processing' WHERE id='p1'").run();
+    expect(armTaskAtomically(inbound, opts("b1", "series-b"))).toBe(false);
+    expect(armedCount("series-b", "'pending','processing'")).toBe(1);
+  });
+
+  it("paused re-arm is also guarded (auto-pause idempotency)", () => {
+    expect(armTaskAtomically(inbound, { ...opts("c1", "series-c"), trigger: 0, taskStatus: "paused" })).toBe(true);
+    // 已 paused → 普通 re-arm 与二次 paused 都拒绝
+    expect(armTaskAtomically(inbound, opts("c2", "series-c"))).toBe(false);
+    expect(armTaskAtomically(inbound, { ...opts("c3", "series-c"), taskStatus: "paused" })).toBe(false);
+    expect(armedCount("series-c", "'paused'")).toBe(1);
+  });
+
+  it("writes even seq on the host lane", () => {
+    expect(armTaskAtomically(inbound, opts("d1", "series-d"))).toBe(true);
+    const row = inbound.prepare("SELECT seq FROM messages_in WHERE id='d1'").get() as { seq: number };
+    expect(row.seq % 2).toBe(0);
+  });
+});
+
 /*
  * 修改记录：
  *   2026-08-12 修正既有用例 "delivery bookkeeping"：原期望 failed 覆盖 delivered，与基线（nanoclaw
  *              src/db/session-db.ts 双 INSERT OR IGNORE）及本文件先写为准回归用例矛盾；改为断言
  *              first-write-wins，并补无先写记录时 failed 正常落库的断言。
+ *   2026-10-06 P0-1：补 armTaskAtomically 原子性/幂等/暂停守卫/奇偶 seq 用例
  */

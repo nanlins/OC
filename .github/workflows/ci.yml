@@ -1,4 +1,18 @@
-# CI —— fix-plan P2：typecheck / lint / format / host tests / frontend tests / container tests
+# CI -- typecheck / lint / format / host tests / frontend / container unit tests / docker image + E2E
+#
+# Design notes:
+#   - Every job carries timeout-minutes. A wedged step must fail the run, not hang it.
+#   - Every docker invocation is wrapped in `timeout(1)` so a stuck daemon cannot wedge
+#     the runner the way a stuck containerd shim wedges a local machine.
+#   - The Docker probe uses `docker info`, never `docker ps -a` / `docker logs` /
+#     `docker inspect`: those block on per-container state and hang indefinitely when a
+#     shim lock is stuck, while `docker info` only talks to the daemon.
+#   - Audit and coverage are advisory (continue-on-error). They are signals, not gates:
+#     a transitive dev-dep advisory must not red the build, and coverage has no hard
+#     threshold because a numeric gate invites empty tests written to hit it.
+#   - The docker job DEGRADES gracefully: when the daemon is unreachable it emits a
+#     notice and skips image build + compose validation + E2E. That skip is explicit and
+#     logged -- it must not be mistaken for a passing build of those artifacts.
 name: CI
 
 on:
@@ -6,9 +20,14 @@ on:
     branches: [main, master]
   pull_request:
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   host:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -26,9 +45,28 @@ jobs:
         run: pnpm format:check
       - name: Host tests
         run: pnpm test
+      - name: Dependency audit (advisory)
+        continue-on-error: true
+        run: |
+          # --prod first: runtime deps are what ships. Dev-dep advisories are reported
+          # but never block, since they cannot affect a running host.
+          pnpm audit --prod --audit-level=high
+          pnpm audit --audit-level=high || echo "::warning::dev-dependency advisories present"
+      - name: Coverage (advisory, non-blocking)
+        continue-on-error: true
+        run: pnpm coverage
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-lcov
+          path: coverage/
+          if-no-files-found: ignore
+          retention-days: 14
 
   frontend:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     defaults:
       run:
         working-directory: web/frontend
@@ -51,6 +89,7 @@ jobs:
 
   container:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     defaults:
       run:
         working-directory: container/agent-runner
@@ -61,9 +100,73 @@ jobs:
           bun-version: latest
       - name: Install deps
         run: bun install --frozen-lockfile
+      - name: Container typecheck
+        run: bun run typecheck
       - name: Container tests
         run: bun test
 
+  # Image build + E2E live in their own job so a Docker problem cannot red the host,
+  # frontend or container-unit gates -- those do not need a daemon at all.
+  docker:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - name: Install deps
+        run: pnpm install --frozen-lockfile
+
+      - name: Docker availability probe (time-boxed, cannot hang)
+        id: docker
+        run: |
+          set +e
+          version=$(timeout 20s docker info --format '{{.ServerVersion}}' 2>/dev/null)
+          status=$?
+          set -e
+          if [ $status -eq 0 ] && [ -n "$version" ]; then
+            echo "available=true" >> "$GITHUB_OUTPUT"
+            echo "Docker daemon reachable, server version: $version"
+          else
+            echo "available=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::Docker daemon not reachable within 20s (exit $status); image build and E2E will be skipped."
+          fi
+
+      - name: Build agent image
+        if: steps.docker.outputs.available == 'true'
+        run: timeout 900s pnpm build:container
+
+      - name: Build host image (P1-2)
+        if: steps.docker.outputs.available == 'true'
+        # Builds the REAL host image (the Node orchestrator), not the agent image, so the
+        # root Dockerfile is actually exercised in CI rather than just existing.
+        run: timeout 900s docker build -f Dockerfile -t oc-host:ci .
+
+      - name: Validate compose file (P1-2)
+        if: steps.docker.outputs.available == 'true'
+        # Static YAML + interpolation validation; does not need a running daemon but we
+        # gate it on availability so a Docker-less runner stays a clean skip.
+        run: docker compose -f docker-compose.yml config >/dev/null
+
+      - name: Container E2E
+        if: steps.docker.outputs.available == 'true'
+        # The suite self-skips when its preconditions are unmet and reports why; the
+        # outer timeout is the backstop against a wedged daemon mid-test.
+        run: timeout 300s env OC_E2E=1 pnpm test -- tests/e2e
+
+      - name: Record skip
+        if: steps.docker.outputs.available != 'true'
+        run: echo "::notice::Docker unavailable - image build (agent + host), compose validation and container E2E were skipped, not failed."
+
 # 修改记录：
 #   2026-09-16 删除 pnpm/action-setup@v4 中与 packageManager 重复的 version，修复 host/frontend CI 启动失败
-
+#   2026-10-06 P2-5：每个 job 加 timeout-minutes；新增 docker job（时间受限的可用性探测 +
+#              镜像构建 + E2E，探测只用 docker info 不用 ps -a/logs/inspect）；
+#              新增 advisory 的 pnpm audit 与覆盖率步骤；container job 补 bun typecheck；加 concurrency 取消
+#   2026-10-06 T1-5：覆盖率改用已安装的 @vitest/coverage-v8（pnpm coverage），不再探测降级；
+#              产物经 upload-artifact 保留 14 天；仍为 continue-on-error，不阻塞合并
+#   2026-10-06 P1-2：docker job 新增真实主机镜像构建（docker build -f Dockerfile -t oc-host:ci .）
+#              与 docker compose config 校验；Docker 不可用时该 job 显式降级为 notice+skip

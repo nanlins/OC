@@ -58,6 +58,10 @@ async function deliverViaAdapter(
   // fix-plan 流式：operation=edit 时从 delivered 解析目标平台消息 id（in_reply_to = 首条流式消息的 outbound id）
   const editTarget =
     out.operation === "edit" && out.in_reply_to ? getDeliveredPlatformMessageId(inbound, out.in_reply_to) : null;
+  // CLI meta 需要组级 provider/model：一次取组配置，provider 从真实配置解析（P0-2）。
+  // 旧实现 model 取 configFromDb(...).model、provider 却取 session.agent_provider——而新会话
+  // agent_provider 恒 null（router resolveSession 未传），于是 CLI meta 的 provider 一直是 null。
+  const cliConfig = key === "cli" ? configFromDb(session.agent_group_id) : null;
   const platformMessageId = await adapter.deliver(out.platform_id ?? "", out.thread_id ?? null, {
     kind: out.kind,
     content: out.content,
@@ -67,14 +71,13 @@ async function deliverViaAdapter(
     inReplyTo: out.in_reply_to ?? null, // 阶段 12：流式消息链 id（CLI 客户端合并增量）
     streamFinal: (out.stream_final ?? 0) === 1, // 阶段 12：流式结束标记（CLI 通道立即冲刷）
     // 阶段 12 CLI TUI：会话元数据帧（仅 CLI 通道消费；其他通道忽略未知字段）
-    meta:
-      key === "cli"
-        ? {
-            agent: session.agent_group_id,
-            model: configFromDb(session.agent_group_id).model ?? undefined,
-            provider: session.agent_provider ?? undefined,
-          }
-        : null,
+    meta: cliConfig
+      ? {
+          agent: session.agent_group_id,
+          model: cliConfig.model ?? undefined,
+          provider: cliConfig.provider ?? session.agent_provider ?? undefined,
+        }
+      : null,
   });
   return { platformMessageId };
 }
@@ -347,4 +350,7 @@ onHostShutdown("delivery", () => stopDeliveryPolls());
 /*
  * 修改记录：
  *   2026-08-25 阶段 12：CLI 聊天界面（meta/tool/end 帧协议 + TUI 渲染）
+ *   2026-10-06 P0-2：CLI meta 的 provider 改为从组真实配置解析
+ *              （configFromDb(...).provider 优先，session.agent_provider 回退），
+ *              修掉新会话 provider 恒为 null 的显示缺陷；同时收敛为一次 configFromDb 调用
  */

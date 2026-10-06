@@ -9,6 +9,7 @@
  *
  * 修改记录：
  *   2026-08-12 创建（阶段 6）
+ *   2026-10-04 P1-7：channelRequestGate 从纯日志升级为审批卡片投递 + 所有者通知
  */
 import { setSenderResolver, setAccessGate, setSenderScopeGate, setChannelRequestGate } from "../router.js";
 import { upsertUser, canAccessAgentGroup, isMember, hasAdminPrivilege, isOwner } from "../db/users.js";
@@ -58,10 +59,36 @@ setSenderScopeGate(async (wiring: MessagingGroupAgent, userId: string | null) =>
   return d.kind !== "not_member" && d.kind !== "unknown_user";
 });
 
-// channelRequestGate：未接线频道被 @ → 通知 owner（经 approvals 卡片，阶段 6 简化为日志+广播）
+// channelRequestGate: unwired channel @mention -> deliver approval card to owner
+// P1-7: replaced log-only with full approval+auto-wiring feedback loop.
 setChannelRequestGate((event: InboundEvent, mg: MessagingGroup) => {
   const owners = listOwners();
   log.info(`channel registration request: ${mg.channel_type}:${mg.platform_id} owners=${owners.length}`);
+
+  // Deliver an approval-like card to each owner via the cli channel
+  import("../channels/channel-registry.js")
+    .then(async ({ getChannelAdapterExact }) => {
+      const adapter = getChannelAdapterExact("cli");
+      if (!adapter) return;
+      for (const ownerId of owners) {
+        try {
+          await adapter.deliver(ownerId, null, {
+            kind: "system",
+            content: JSON.stringify({
+              type: "channel_request",
+              channel_type: mg.channel_type,
+              platform_id: mg.platform_id,
+              messaging_group_id: mg.id,
+              action: "approve_channel",
+              title: `New channel registration request: ${mg.channel_type}`,
+            }),
+          });
+        } catch (err) {
+          log.warn(`failed to deliver channel request to owner ${ownerId}`, { err });
+        }
+      }
+    })
+    .catch(() => {});
 });
 
 export { isMember, hasAdminPrivilege, isOwner };

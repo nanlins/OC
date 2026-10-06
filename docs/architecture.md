@@ -47,7 +47,7 @@ messaging_groups (id, channel_type, platform_id, instance)
   -> session 解析（按 session_mode 创建/复用）
   -> 写 messages_in -> inbound.db
   -> wakeContainer() 唤醒 Docker 容器
-  -> Agent Runner 轮询 inbound.db -> 格式化 -> Provider 调用 LLM
+  -> Agent Runner 轮询 inbound.db -> 格式化 -> Provider 调用 LLM（经宿主 llm-proxy 注入密钥）
   -> 写 messages_out -> outbound.db
   -> 主机 delivery 轮询 outbound -> 通道适配器投递 -> 用户
 ```
@@ -58,7 +58,8 @@ messaging_groups (id, channel_type, platform_id, instance)
 - 文件系统隔离：只挂载显式指定路径（`/workspace`、`/workspace/agent`、`inbound.db`、`outbound.db`）
 - 资源限制：`--cpus`、`--memory`、`--pids-limit`
 - Agent 运行在 Bun 运行时，不依赖 tsc 编译（`bun run /app/src/index.ts`）
-- 密钥经 `--env-file`（0600）注入，不进 docker run argv
+- **密钥不进容器**：真实密钥由宿主 `llm-proxy` 在网络边界注入上游请求；容器 env 只携带
+  代理地址（`OC_LLM_PROXY_URL` / `ANTHROPIC_BASE_URL`），经 `--env-file`（0600）注入、不进 argv
 
 ## 6. 模块化扩展
 

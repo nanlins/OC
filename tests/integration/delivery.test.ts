@@ -88,6 +88,47 @@ describe("delivery", () => {
     expect(n2).toBe(0);
   });
 
+  it("P0-2: CLI meta provider resolves from group config, not the null session.agent_provider", async () => {
+    // 复现根因：新建会话不传 agentProvider → session.agent_provider 恒 null；
+    // 但组配置里 provider=openai，CLI meta 的 provider 必须取到 openai。
+    const group = createAgentGroup({
+      name: "P2",
+      folder: `p2-${Math.random().toString(36).slice(2, 8)}`,
+      agentProvider: "openai",
+    });
+    const s = resolveSession({ agentGroupId: group.id, sessionMode: "agent-shared" });
+    expect(s.agent_provider).toBeNull();
+
+    let capturedMeta: { agent?: string | null; model?: string | null; provider?: string | null } | null = null;
+    setActiveAdapterForTest({
+      name: "meta-capture",
+      channelType: "cli",
+      supportsThreads: false,
+      setup: () => {},
+      deliver: async (_p, _t, msg) => {
+        capturedMeta = msg.meta ?? null;
+        return "plat-meta";
+      },
+    });
+
+    const db = openOutboundDbRw(outboundDbPath(s.agent_group_id, s.id));
+    ensureOutboundSchema(db);
+    db.prepare(`INSERT INTO messages_out (id, seq, timestamp, kind, content) VALUES (?, ?, ?, ?, ?)`).run(
+      randomUUID(),
+      1,
+      new Date().toISOString(),
+      "chat",
+      "hi",
+    );
+    db.close();
+
+    await deliverSessionMessages(s);
+    expect(capturedMeta).not.toBeNull();
+    expect(capturedMeta!.provider).toBe("openai");
+    // model 未配置 → undefined（经 JSON 序列化后字段被省略，属预期）
+    expect(capturedMeta!.model).toBeUndefined();
+  });
+
   it("retries then marks failed after MAX attempts", async () => {
     writeOut("will fail");
     failMode = true;

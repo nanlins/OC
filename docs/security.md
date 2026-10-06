@@ -27,23 +27,30 @@
 
 | 防御 | 实现 |
 |------|------|
-| **fail-closed 鉴权** | `WEB_TOKEN` 未配置时自动生成随机 token 持久化（`data/web-token`），拒绝空 token |
+| **鉴权（两档，无第三档）** | 未配置 `WEB_TOKEN`：**仅回环可达**（`authorized()` 只放行 127.0.0.1/::1，且 `WEB_HOST` 默认 127.0.0.1），不生成也不持久化任何 token；配置了 `WEB_TOKEN`：fail-closed，恒要求 `Authorization: Bearer <WEB_TOKEN>`，空值/错值一律 401 |
 | **CSRF** | POST 请求拒绝 `Sec-Fetch-Site: cross-site` 与 Origin 不等于 Host |
 | **路径穿越** | `/api/traces/:id` 经 `isSafeTraceId`（拒分隔符 + resolve 容纳校验） |
 | **请求体超限** | 超 1MB 停止累积，返回 413 |
+| **坏 JSON** | `readBody` 三态化，非法 JSON 返回 400（不再吞成 `{}` 而误报 409） |
 | **常量时间 token 比较** | `timingSafeEqual` |
 | **SQL 注入** | 全部参数化查询；动态列名经白名单校验（`COL_RE` 正则） |
+| **审计单一源** | 唯一审计源是中央库 `guard_audit` 表（observability 模块的 audit sink 写入，delivery-guard 触发）；不存在第二套 JSONL 审计 |
 
 **文件**：`src/web/api.ts`、`src/web/server.ts`、`src/eval/trace.ts`
 
 ## 4. 密钥管理
 
-- **不进 process.env**：`.env` 经 `readEnvFile` 白名单读取，刻意不写入 `process.env`
-- **不进 docker argv**：密钥写 0600 临时文件，经 `--env-file` 注入容器，容器退出即删
-- **不进 Git**：`.env` 已 gitignore
-- **诚实取舍**：弱于基线 OneCLI 网关的"token 不进容器"（docs/architecture.md 已记录）
+真实密钥的边界在宿主 `llm-proxy`，**不进容器**：
 
-**文件**：`src/env.ts`、`src/providers/openai.ts`、`src/container-runner.ts`
+- **不进 process.env**：`.env` 经 `readEnvFile` 白名单读取，刻意不写入 `process.env`
+- **不进容器**：真实密钥只在宿主 `src/llm-proxy.ts` 读取一次，在网络边界注入上游请求。
+  代理剥离入站 `authorization` / `x-api-key`，替换为主机密钥后转发；容器侧请求携带的
+  占位密钥被丢弃。容器 env 只携带代理地址（`OC_LLM_PROXY_URL` / `ANTHROPIC_BASE_URL`），
+  那不是密钥，泄露也不构成凭据泄露。
+- **不进 docker argv**：容器 env（含代理地址）经 0600 临时文件 `--env-file` 注入，不进 argv；容器退出即删，宿主崩溃遗留由下次启动的 `sweepStaleEnvFiles` 兜底
+- **不进 Git**：`.env` 已 gitignore
+
+**文件**：`src/llm-proxy.ts`、`src/env.ts`、`src/providers/{openai,claude}.ts`、`src/container-runner.ts`
 
 ## 5. 附件与文件系统安全
 
@@ -78,7 +85,7 @@
 
 | 项 | 取舍 | 原因 |
 |---|---|---|
-| 密钥进容器 env | 弱于基线 OneCLI 网关 | 可移植性 > 隔离强度（已记录） |
+| llm-proxy 默认只监听 127.0.0.1 | 容器经 host.docker.internal 访问时，Docker Desktop 的 relay 在宿主回环上重新发起连接，故可用；原生 Linux Docker 需显式放宽到 docker0 网关 | 最小暴露面 |
 | Windows 命名管道无 0600 等价 ACL | 依赖文件系统权限 | 仅平台支持（Unix 有 chmod 0600） |
 | web_fetch 无应用层 SSRF 过滤 | 依赖容器网络隔离 | 简化实现 |
 | SMTP 587 STARTTLS 验证证书 | 已实现 | 修复记录见 commit history |

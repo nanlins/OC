@@ -104,9 +104,12 @@ export function evaluateEngage(
       try {
         return new RegExp(pattern).test(event.message.content);
       } catch (err) {
-        // 可用性优先：坏正则 fail-open 并告警（安全增强见补充优化 C.2：写入时校验）
-        log.warn(`bad engage_pattern fail-open: ${pattern}`, { err });
-        return true;
+        // P0-3 修复：坏正则 fail-CLOSED（原为 fail-open return true）。
+        // fail-open 的后果是"一条非法 pattern 让该接线的每条消息都触发 agent"——
+        // 既烧 token 又绕过操作员的 engage 意图；宁可静默不触发并告警。
+        // 写入侧已同步校验（wirings create 拒绝非法正则），此处只兜历史脏数据。
+        log.warn(`bad engage_pattern ignored (fail-closed): ${pattern}`, { err });
+        return false;
       }
     }
     case "mention":

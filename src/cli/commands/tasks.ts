@@ -10,3 +10,9 @@
 export function registerTasksCommands(): void {
   // tasks list/cancel 已在 resources.ts 中注册，此处预留扩展
 }
+/*
+ * 修改记录：
+ *   2026-08-24 创建（补齐未完成清单）
+ *   2026-10-06 覆盖率核查：确认为预留空桩（无命令），tasks list/cancel 在 resources 桶，
+ *              由 tests/unit/cli-commands.test.ts 断言其可查性。
+ */

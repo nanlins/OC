@@ -1,24 +1,37 @@
 /**
- * providers/claude.ts —— Anthropic Claude provider 主机侧容器贡献
+ * providers/claude.ts -- Anthropic Claude provider, host-side container contribution
  *
- * 职责：spawn 时把 ANTHROPIC_API_KEY（及可选 ANTHROPIC_BASE_URL）经 -e 注入容器
- *       （容器侧 ClaudeProvider 读 process.env.ANTHROPIC_API_KEY）。
- * 关键导出：无（副作用注册 claude）
- * 承重不变量：密钥只经显式 -e 注入；.env 优先、process.env 兜底；不写宿主 process.env。
- * 借鉴：nanoclaw src/providers/claude.ts（简化：直连 api.anthropic.com，无 OneCLI 网关改写）
+ * Responsibility: at spawn time, point the container at the host LLM proxy for the
+ * Anthropic protocol. The real ANTHROPIC_API_KEY is injected by the proxy at the
+ * network boundary and never enters the container environment.
  *
- * 修改记录：2026-08-13 创建（收束期补 key 接线，支撑端到端实测）
+ * Key exports: none (side-effect registration of "claude")
+ * Invariant: no credential in the returned env. This mirrors providers/openai.ts;
+ *   the previous shape injected the real key via --env-file, which left the project
+ *   with two contradictory key models (openai proxied, claude not) and meant a
+ *   compromised container could read a live Anthropic key off its own environment.
+ *   The container's Anthropic SDK sends a placeholder key; the proxy strips inbound
+ *   credential headers and substitutes the host's (see src/llm-proxy.ts invariant 4).
+ *
+ * Referenced: nanoclaw src/providers/claude.ts (key-never-enters-container semantics)
+ *
+ * Modification record:
+ *   2026-08-13  Created
+ *   2026-10-06  P0-2: routed through the LLM proxy instead of injecting the real key,
+ *               making the key model consistent across openai/claude/ollama
  */
-import { readEnvFile } from "../env.js";
-import { ENV_PATH } from "../config.js";
+import { proxyUrlFor } from "../llm-proxy.js";
 import { registerProviderContainerConfig } from "./provider-container-registry.js";
 
 registerProviderContainerConfig("claude", () => {
-  const dotenv = readEnvFile(["ANTHROPIC_API_KEY", "ANTHROPIC_BASE_URL"], ENV_PATH);
   const env: Record<string, string> = {};
-  const key = dotenv.ANTHROPIC_API_KEY || process.env.ANTHROPIC_API_KEY || "";
-  const base = dotenv.ANTHROPIC_BASE_URL || process.env.ANTHROPIC_BASE_URL || "";
-  if (key) env.ANTHROPIC_API_KEY = key;
-  if (base) env.ANTHROPIC_BASE_URL = base;
+  // The Anthropic SDK appends /v1/messages to this base, so the proxy sees
+  // /llm-proxy-anthropic/v1/messages and forwards to the real api.anthropic.com.
+  env.ANTHROPIC_BASE_URL = proxyUrlFor("anthropic");
   return { mounts: [], env };
 });
+
+/*
+ * Modification record:
+ *   2026-10-06  P0-2: proxy-only contribution; real key no longer injected into the container
+ */

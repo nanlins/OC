@@ -187,7 +187,52 @@ export interface InsertSessionMessageOpts {
 }
 
 /**
- * 主机写入 inbound.db 的 messages_in。
+ * 原子 re-arm（P0-1，参照 nanoclaw armNextTask）：
+ * 用单条「条件 INSERT」在同一语句内完成"检查该 series 是否已有 armed 行"+"插入新任务行"，
+ * 消除 handleRecurrence 旧实现的竞态窗口——旧实现先 SELECT 判断再 writeSessionMessage 插入，
+ * 两个并发 sweep 可能同时通过判断、双双插入，导致同 series 双触发。
+ *
+ * SQLite 单语句天然原子（语句级隐式事务），无需跨连接显式事务。
+ * @returns 是否真正插入了行（false = 已 armed/已暂停，幂等跳过）
+ */
+export function armTaskAtomically(
+  db: Database.Database,
+  opts: InsertSessionMessageOpts & { seriesId: string; taskStatus?: "pending" | "paused" },
+): boolean {
+  const seq = nextEvenSeq(db);
+  const status = opts.taskStatus ?? "pending";
+  const r = db
+    .prepare(
+      `INSERT INTO messages_in
+         (id, seq, kind, timestamp, status, process_after, recurrence, series_id, tries, trigger, on_wake,
+          platform_id, channel_type, thread_id, content, source_session_id)
+       SELECT ?, ?, 'task', ?, ?, ?, ?, ?, 0, ?, 0, ?, ?, ?, ?, ?
+       WHERE NOT EXISTS (
+         SELECT 1 FROM messages_in
+         WHERE kind = 'task' AND series_id = ? AND status IN ('pending', 'processing', 'paused')
+       )`,
+    )
+    .run(
+      opts.id,
+      seq,
+      opts.timestamp ?? new Date().toISOString(),
+      status,
+      opts.processAfter ?? null,
+      opts.recurrence ?? null,
+      opts.seriesId,
+      opts.trigger ?? 1,
+      opts.platformId ?? null,
+      opts.channelType ?? null,
+      opts.threadId ?? null,
+      opts.content,
+      opts.sourceSessionId ?? null,
+      opts.seriesId,
+    );
+  return r.changes === 1;
+}
+
+/**
+ * 主机写 inbound.db 的 messages_in。
  * ⚠ 调用方必须 open-write-CLOSE（不要重构成复用长连接，见文件头不变量 2）。
  */
 export function insertSessionMessage(db: Database.Database, opts: InsertSessionMessageOpts): void {

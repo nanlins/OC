@@ -12,14 +12,15 @@
  *
  * 修改记录：
  *   2026-08-12 创建（阶段 4）；重写修复 PowerShell 转码损坏
+ *   2026-10-06 T1-4：OPENCLAW_WORKSPACE → OC_WORKSPACE（统一 OC_* 环境变量家族）
  */
 import { Database } from "bun:sqlite";
 import { existsSync, mkdirSync, utimesSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 
-/** 惰性读取（测试经 initTestSessionDb 注入 OPENCLAW_WORKSPACE） */
+/** 惰性读取（测试经 initTestSessionDb 注入 OC_WORKSPACE） */
 export function getWorkspace(): string {
-  return process.env.OPENCLAW_WORKSPACE ?? "/workspace";
+  return process.env.OC_WORKSPACE ?? "/workspace";
 }
 
 export function inboundPath(): string {
@@ -156,7 +157,7 @@ export function clearContainerToolInFlight(): void {
 
 /** 测试用：指向临时 workspace 并建双库 schema */
 export function initTestSessionDb(workspace: string, inboundSchema: string, outboundSchema: string): void {
-  process.env.OPENCLAW_WORKSPACE = workspace;
+  process.env.OC_WORKSPACE = workspace;
   mkdirSync(workspace, { recursive: true });
   const inDb = new Database(inboundPath());
   inDb.exec(inboundSchema);

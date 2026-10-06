@@ -8,6 +8,8 @@
  *
  * 修改记录：
  *   2026-08-12 创建（阶段 1）
+ *   2026-10-06 R-2：新增 isDbReady()（不抛错探测），供 spawnContainer 显式区分
+ *              "中央库未初始化（不变量破坏）"与瞬时 docker 故障
  */
 import Database from "better-sqlite3";
 
@@ -32,6 +34,15 @@ export function initTestDb(): Database.Database {
 export function getDb(): Database.Database {
   if (!db) throw new Error("central db not initialized: call initDb()/initTestDb() first");
   return db;
+}
+
+/**
+ * 中央库是否就绪（不抛错的探测）。
+ * 供 spawnContainer 等长生命周期入口做前置检查：DB 未初始化是"不变量破坏"，
+ * 必须显式失败，不得与瞬时 docker 故障混为一谈（R-2）。
+ */
+export function isDbReady(): boolean {
+  return db !== null;
 }
 
 export function closeDb(): void {

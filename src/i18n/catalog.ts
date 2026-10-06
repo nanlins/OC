@@ -10,6 +10,7 @@
  * 命名空间：common.* 共享 / cli.* CLI 操作面 / api.* Web API / channel.* 渠道终端用户面。
  *
  * 修改记录：2026-08-13 创建（阶段 14）
+ *   2026-10-04 P2-13：增加 cli.missing_destination / cli.destination_flags_required / cli.group_id_required 三语条目
  */
 export type Locale = "zh" | "en" | "ja";
 
@@ -45,8 +46,12 @@ export const CATALOG: Record<Locale, Record<string, string>> = {
     "cli.session_gone": "会话已不存在",
     "cli.error": "CLI 错误：{msg}",
     "cli.timeout": "CLI 超时",
+    "cli.destination_flags_required": "需要 --group（或 --agent-group）与 --destination",
+    "cli.group_id_required": "需要 agent group id",
+    "cli.invalid_engage": "engage 配置无效：{reason}",
 
     "api.err.bad_request": "请求无效",
+    "api.err.malformed_json": "请求体不是合法 JSON",
     "api.err.forbidden": "禁止跨站请求",
     "api.err.payload_too_large": "请求体过大",
     "api.err.unauthorized": "未授权",
@@ -83,8 +88,12 @@ export const CATALOG: Record<Locale, Record<string, string>> = {
     "cli.session_gone": "session gone",
     "cli.error": "cli error: {msg}",
     "cli.timeout": "cli timeout",
+    "cli.destination_flags_required": "--group (or --agent-group) and --destination required",
+    "cli.group_id_required": "agent group id required",
+    "cli.invalid_engage": "invalid engage configuration: {reason}",
 
     "api.err.bad_request": "bad request",
+    "api.err.malformed_json": "request body is not valid JSON",
     "api.err.forbidden": "cross-site request forbidden",
     "api.err.payload_too_large": "payload too large",
     "api.err.unauthorized": "unauthorized",
@@ -121,8 +130,12 @@ export const CATALOG: Record<Locale, Record<string, string>> = {
     "cli.session_gone": "セッションは存在しません",
     "cli.error": "CLI エラー：{msg}",
     "cli.timeout": "CLI タイムアウト",
+    "cli.destination_flags_required": "--group（または --agent-group）と --destination が必要です",
+    "cli.group_id_required": "agent group id が必要です",
+    "cli.invalid_engage": "engage 設定が無効です：{reason}",
 
     "api.err.bad_request": "不正なリクエスト",
+    "api.err.malformed_json": "リクエストボディが正しい JSON ではありません",
     "api.err.forbidden": "クロスサイトリクエスト禁止",
     "api.err.payload_too_large": "リクエストボディが大きすぎます",
     "api.err.unauthorized": "未認証",

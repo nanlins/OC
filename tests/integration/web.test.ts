@@ -4,6 +4,9 @@
  * 修改记录：
  *   2026-08-13 创建（阶段 9）
  *   2026-09-16 补 /health 存活探针测试（docker-compose healthcheck 此前打的是一个不存在的端点）
+ *   2026-10-06 P1-4：坏 JSON → 400（非对象 JSON 同样 400，空体仍 409）；/api/audit 与
+ *              queryGuardAudit 读同一 guard_audit 源的一致性断言
+ *              P2-4：authorized 的两档模型（配置 token / 仅回环）逐分支覆盖，并断言不再生成 web-token
  */
 import { describe, expect, it, beforeEach, afterEach } from "vitest";
 import {
@@ -16,9 +19,16 @@ import {
 } from "../../src/db/index.js";
 import { migration001 } from "../../src/db/index.js";
 import { startWebServer, stopWebServer, resolveStaticDir } from "../../src/web/server.js";
+import { authorized, webTokenConfigured } from "../../src/web/api.js";
+import { getDeliveryAction, registerDeliveryAction } from "../../src/delivery.js";
+import { queryGuardAudit } from "../../src/modules/observability.js";
+import { defineGuardedAction, ALLOW } from "../../src/guard/index.js";
+import { resolveSession } from "../../src/session-manager.js";
 import { existsSync, readdirSync } from "node:fs";
 import { resolve as resolvePath } from "node:path";
-import { PROJECT_ROOT } from "../../src/config.js";
+import type { IncomingMessage } from "node:http";
+import { PROJECT_ROOT, DATA_DIR } from "../../src/config.js";
+import "../../src/modules/index.js"; // 副作用：注册模块迁移（guard_audit / usage_daily）+ 审计 sink
 void stopWebServer;
 import { publishWebEvent } from "../../src/web/events.js";
 
@@ -196,5 +206,118 @@ describe("web api", () => {
     controller.abort();
     // 重启供 afterEach stop 幂等
     port = await startWebServer(0);
+  });
+
+  it("P1-4: malformed JSON body returns 400, not 409 invalid-args", async () => {
+    for (const body of ["{not json", '{"id":', "trailing garbage}", "{'single':'quotes'}"]) {
+      const res = await fetch(`http://127.0.0.1:${port}/api/approvals/resolve`, {
+        method: "POST",
+        headers: { "content-type": "application/json", ...AUTH },
+        body,
+      });
+      expect(res.status, body).toBe(400);
+      const json = (await res.json()) as { code?: string };
+      expect(json.code).toBe("api.err.malformed_json");
+    }
+  });
+
+  it("P1-4: valid JSON that is not an object is also 400", async () => {
+    for (const body of ["[]", '"a string"', "42", "null"]) {
+      const res = await fetch(`http://127.0.0.1:${port}/api/wirings`, {
+        method: "POST",
+        headers: { "content-type": "application/json", ...AUTH },
+        body,
+      });
+      expect(res.status, body).toBe(400);
+    }
+  });
+
+  it("P1-4: an empty body is still accepted (400 is reserved for malformed input)", async () => {
+    // No body at all means "no fields supplied", which is a validation problem for the
+    // handler (409), not a parse problem -- the two must stay distinguishable.
+    const res = await fetch(`http://127.0.0.1:${port}/api/approvals/resolve`, {
+      method: "POST",
+      headers: { "content-type": "application/json", ...AUTH },
+    });
+    expect(res.status).toBe(409);
+  });
+
+  it("P1-4: /api/audit reads the single guard_audit source, consistent with the module reader", async () => {
+    // Write through the real guard sink (delivery-guard -> observability -> guard_audit),
+    // then read the same row back through BOTH readers. This is the acceptance for
+    // "audit data readable consistently between Web and the security module" -- there
+    // is exactly one source now that the dead JSONL writer is gone.
+    const action = defineGuardedAction("web-audit-probe", { decide: () => ALLOW("ok") });
+    registerDeliveryAction("web_audit_probe", { guard: { guardAction: action }, handler: async () => {} });
+    // Created inside this test, not in beforeEach: /api/groups projections elsewhere
+    // assert an exact row count.
+    const agentGroupId = createAgentGroup({
+      name: "WA",
+      folder: `wa-${Math.random().toString(36).slice(2, 8)}`,
+    }).id;
+    const session = resolveSession({ agentGroupId, sessionMode: "agent-shared" });
+    const wrapped = getDeliveryAction("web_audit_probe");
+    await wrapped!(
+      {
+        id: "o-web-1",
+        seq: 1,
+        in_reply_to: null,
+        timestamp: new Date().toISOString(),
+        deliver_after: null,
+        recurrence: null,
+        kind: "system",
+        operation: null,
+        platform_id: null,
+        channel_type: "mock",
+        thread_id: null,
+        content: "{}",
+      },
+      session,
+    );
+
+    const viaModule = queryGuardAudit("web-audit-probe");
+    expect(viaModule.length).toBeGreaterThan(0);
+
+    const res = await fetch(`http://127.0.0.1:${port}/api/audit`, { headers: AUTH });
+    expect(res.status).toBe(200);
+    const viaWeb = (await res.json()) as Array<Record<string, unknown>>;
+    const matched = viaWeb.filter((r) => r.action === "web-audit-probe");
+    expect(matched.length).toBe(viaModule.length);
+    expect(matched[0]?.decision).toBe(viaModule[0]!.decision);
+    expect(matched[0]?.id).toBe(viaModule[0]!.id);
+  });
+});
+
+describe("P2-4: web auth model matches its documentation", () => {
+  function fakeReq(remoteAddress: string, authorization?: string): IncomingMessage {
+    return { socket: { remoteAddress }, headers: authorization ? { authorization } : {} } as unknown as IncomingMessage;
+  }
+
+  it("reports whether a token is configured", () => {
+    // vitest pins WEB_TOKEN=test-web-token, so the configured branch is the default here
+    expect(webTokenConfigured()).toBe(true);
+  });
+
+  it("with a token configured: requires the exact Bearer value", () => {
+    expect(authorized(fakeReq("203.0.113.9", "Bearer test-web-token"), "test-web-token")).toBe(true);
+    expect(authorized(fakeReq("203.0.113.9", "Bearer wrong"), "test-web-token")).toBe(false);
+    expect(authorized(fakeReq("203.0.113.9"), "test-web-token")).toBe(false);
+    expect(authorized(fakeReq("203.0.113.9", "test-web-token"), "test-web-token")).toBe(false);
+    // A non-loopback caller is NOT let in just because a token exists elsewhere.
+    expect(authorized(fakeReq("203.0.113.9", "Bearer "), "test-web-token")).toBe(false);
+  });
+
+  it("with no token configured: loopback only, and no token is generated or persisted", () => {
+    for (const loopback of ["127.0.0.1", "::1", "::ffff:127.0.0.1"]) {
+      expect(authorized(fakeReq(loopback), null), loopback).toBe(true);
+      // A Bearer header is irrelevant in this mode -- the address is the whole policy.
+      expect(authorized(fakeReq(loopback, "Bearer anything"), null)).toBe(true);
+    }
+    for (const remote of ["203.0.113.9", "192.168.1.5", "10.0.0.2", "fe80::1", ""]) {
+      expect(authorized(fakeReq(remote), null), remote).toBe(false);
+      expect(authorized(fakeReq(remote, "Bearer anything"), null), remote).toBe(false);
+    }
+    // The removed dead branch used to write DATA_DIR/web-token; it must not exist.
+    expect(existsSync(resolvePath(DATA_DIR, "web-token"))).toBe(false);
   });
 });

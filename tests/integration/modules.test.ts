@@ -25,7 +25,7 @@ import { inboundDbPath, resolveSession } from "../../src/session-manager.js";
 import { openInboundDb } from "../../src/db/session-db.js";
 import { getDeliveryAction } from "../../src/delivery.js";
 import { clearChannelRegistryForTest, setActiveAdapterForTest } from "../../src/channels/channel-registry.js";
-import { handleRecurrence, MAX_DAILY_FIRES } from "../../src/modules/scheduling.js";
+import { handleRecurrence, MAX_DAILY_FIRES } from "../../src/modules/scheduling/index.js";
 import { routeAgentMessage, writeDestinations } from "../../src/modules/agent-to-agent.js";
 import { chunkText, addDocument, searchKb, MIN_SCORE } from "../../src/modules/memory-kb.js";
 import { recordUsage, checkQuota } from "../../src/modules/quota.js";
@@ -72,7 +72,11 @@ beforeEach(() => {
   groupId = createAgentGroup({ name: "M", folder: `m-${Math.random().toString(36).slice(2, 8)}` }).id;
 });
 
-afterEach(() => {
+afterEach(async () => {
+  // R-2：先让 fire-and-forget 的异步 spawn 续体（如 restart 的 onExit 立即触发路径）
+  // 在 closeDb 之前落地，避免后台 spawnContainer 撞上已关闭的中央库——
+  // 那会在日志里留下误导性的 "central db not initialized"（旧实现还会吞成 transient）。
+  await new Promise((r) => setTimeout(r, 20));
   resetContainerSpawnerForTest();
   clearChannelRegistryForTest();
   closeDb();
@@ -156,6 +160,55 @@ describe("scheduling", () => {
       .get(series) as { c: number };
     expect(pending.c).toBe(1);
     inbound2.close();
+  });
+
+  it("re-arm is atomic: two completed rows of one series yield exactly one pending (P0-1)", () => {
+    // 同一 series 出现两个 completed 行（每个 fire 一行）时，旧实现"SELECT 判断 + 再 INSERT"
+    // 存在竞态窗口；新实现用单条条件 INSERT，同批内天然幂等。
+    const session = resolveSession({ agentGroupId: groupId, sessionMode: "agent-shared" });
+    const inbound = openInboundDb(inboundDbPath(groupId, session.id));
+    const series = "series-cc";
+    inbound
+      .prepare(
+        `INSERT INTO messages_in (id, seq, kind, timestamp, status, recurrence, series_id, content)
+         VALUES ('done-cc1', 2, 'task', '2026-08-12T00:00:00Z', 'completed', '0 9 * * *', ?, 'x')`,
+      )
+      .run(series);
+    inbound
+      .prepare(
+        `INSERT INTO messages_in (id, seq, kind, timestamp, status, recurrence, series_id, content)
+         VALUES ('done-cc2', 4, 'task', '2026-08-12T00:00:00Z', 'completed', '0 9 * * *', ?, 'x')`,
+      )
+      .run(series);
+    inbound.close();
+    handleRecurrence(session);
+    const check = openInboundDb(inboundDbPath(groupId, session.id));
+    const pending = check
+      .prepare("SELECT COUNT(*) AS c FROM messages_in WHERE kind = 'task' AND status = 'pending' AND series_id = ?")
+      .get(series) as { c: number };
+    check.close();
+    expect(pending.c).toBe(1);
+  });
+
+  it("re-arm is idempotent across repeated sweeps (P0-1)", () => {
+    const session = resolveSession({ agentGroupId: groupId, sessionMode: "agent-shared" });
+    const inbound = openInboundDb(inboundDbPath(groupId, session.id));
+    const series = "series-ii";
+    inbound
+      .prepare(
+        `INSERT INTO messages_in (id, seq, kind, timestamp, status, recurrence, series_id, content)
+         VALUES ('done-ii', 2, 'task', '2026-08-12T00:00:00Z', 'completed', '0 9 * * *', ?, 'x')`,
+      )
+      .run(series);
+    inbound.close();
+    handleRecurrence(session); // 第一轮：re-arm 一行
+    handleRecurrence(session); // 第二轮：done 行仍在，但已有 armed 行 → 不得再插
+    const check = openInboundDb(inboundDbPath(groupId, session.id));
+    const pending = check
+      .prepare("SELECT COUNT(*) AS c FROM messages_in WHERE kind = 'task' AND status = 'pending' AND series_id = ?")
+      .get(series) as { c: number };
+    check.close();
+    expect(pending.c).toBe(1);
   });
 
   it("MAX_DAILY_FIRES constant is 4", () => {

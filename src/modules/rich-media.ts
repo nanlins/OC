@@ -5,6 +5,7 @@
  *       根据通道类型自动选择最佳渲染格式。
  * 关键导出：renderCard, renderButtons, renderForm, RichCard, ButtonGroup
  * 知识文档映射：04-Agent应用详解 §4.10 交互式问题
+ * 接线状态：未接线（全仓无调用方；纯渲染函数无副作用，详见 modules/README.md）。
  *
  * 修改记录：2026-08-24 创建（阶段 11 五、文档之外可扩展方向）
  */
@@ -187,3 +188,9 @@ export function renderForm(
   const body = fields.map((f) => `**${f.label}**: ${f.value}`).join("\n");
   return renderCard({ title, body }, platform);
 }
+/*
+ * 修改记录：
+ *   2026-08-24 创建（阶段 11 五、文档之外可扩展方向）
+ *   2026-10-06 覆盖率核查：确认未接线（全仓无调用方），如实标注；刻意不补测试以免伪装完成。
+ *              启用时须接入消息出口（sendMessage/render 路径）后按通道补渲染断言。
+ */

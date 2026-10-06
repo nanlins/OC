@@ -81,7 +81,8 @@ export function resolveThreadPolicy(
   return wiringThreads === 1;
 }
 
-/** 跨列校验：mentions:'never' 的通道拒绝 mention 类 engage；pattern 缺 pattern 抛错 */
+/** 跨列校验：mentions:'never' 的通道拒绝 mention 类 engage；pattern 缺 pattern 抛错；
+ *  pattern 非法正则抛错（P0-3：写入侧拒绝，避免脏数据落到 router 的 fail-closed 分支）。 */
 export function validateEngageAgainstChannel(opts: {
   channelKey: string;
   channelType: string;
@@ -94,6 +95,15 @@ export function validateEngageAgainstChannel(opts: {
   }
   if (opts.engageMode === "pattern" && !opts.engagePattern) {
     throw new Error("engage_mode=pattern requires engage_pattern");
+  }
+  if (opts.engagePattern) {
+    try {
+      new RegExp(opts.engagePattern);
+    } catch (err) {
+      throw new Error(
+        `engage_pattern is not a valid regular expression: ${opts.engagePattern} (${err instanceof Error ? err.message : String(err)})`,
+      );
+    }
   }
 }
 

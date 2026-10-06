@@ -10,6 +10,7 @@
 export * from "./connection.js";
 export * from "./migrations/index.js";
 export * from "./migrations/001-initial.js";
+export * from "./migrations/002-destinations.js";
 export * from "./agent-groups.js";
 export * from "./messaging-groups.js";
 export * from "./sessions.js";

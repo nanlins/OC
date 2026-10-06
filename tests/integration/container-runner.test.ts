@@ -8,6 +8,8 @@
  */
 import { EventEmitter } from "node:events";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { mkdirSync, writeFileSync } from "node:fs";
+import { dirname } from "node:path";
 import { closeDb, createAgentGroup, createSession, initTestDb, runMigrations } from "../../src/db/index.js";
 import { migration001 } from "../../src/db/index.js";
 import {
@@ -25,7 +27,7 @@ import { containerNameFor } from "../../src/container-runner.js";
 import { configFromDb } from "../../src/container-config.js";
 import { restartAgentGroupContainers } from "../../src/container-restart.js";
 import { withInboundDb } from "../../src/db/session-db.js";
-import { inboundDbPath } from "../../src/session-manager.js";
+import { inboundDbPath, sessionDir } from "../../src/session-manager.js";
 import type { ChildProcess } from "node:child_process";
 import type { Session } from "../../src/types.js";
 
@@ -80,6 +82,19 @@ describe("container-runner", () => {
       throw new Error("docker missing");
     });
     await expect(wakeContainer(session)).resolves.toBe(false);
+  });
+
+  it("P0-3: refuses spawn (returns false) when session db init fails, instead of swallowing the error", async () => {
+    // 让 initSessionFolder 必然失败：把会话目录路径占成一个【文件】，
+    // 这样 mkdirSync(<dir>/outbox) 抛 ENOTDIR。旧实现只 log.warn 继续 spawn，
+    // 容器起来后对着缺库/缺表的文件永久卡死。
+    const dir = sessionDir(session.agent_group_id, session.id);
+    mkdirSync(dirname(dir), { recursive: true });
+    writeFileSync(dir, "i am a file, not a directory");
+
+    await expect(wakeContainer(session)).resolves.toBe(false);
+    expect(spawned).toHaveLength(0); // 绝不能真的 spawn
+    expect(isContainerRunning(session.id)).toBe(false);
   });
 
   it("exit cleans registry and marks stopped; args carry hardening + limits + entrypoint exec", async () => {

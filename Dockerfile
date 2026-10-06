@@ -15,7 +15,10 @@
 # 关键取舍：运行时用 tsx 直跑 TS（与 `pnpm start` 完全一致），不引入 tsc 构建步骤——
 #   镜像里的行为和本机开发行为逐字相同，少一类"只在容器里坏"的故障。
 #
-# 修改记录：2026-09-16 创建（修复 docker-compose.yml 引用了不存在的根 Dockerfile）
+# 修改记录：
+#   2026-09-16 创建（修复 docker-compose.yml 引用了不存在的根 Dockerfile）
+#   2026-10-06 P1-2：修复 useradd UID 1000 冲突（node:22-slim 已占用，改 1001）——
+#              该缺陷由 CI 新增的"真实构建主机镜像"步骤暴露
 
 # ---- 阶段 1：依赖（含 better-sqlite3 原生构建工具链）----
 FROM node:22-slim AS deps
@@ -68,9 +71,11 @@ COPY bin ./bin
 COPY web ./web
 
 # 非 root 运行。注意：要用 docker socket 就必须能读写 /var/run/docker.sock，
-# 部署时需把 node 用户加入 docker 组或对 socket 授权——这是"主机能起容器"的固有代价，
+# 部署时需把 oc 用户加入 docker 组或对 socket 授权——这是"主机能起容器"的固有代价，
 # 也是本项目推荐主机原生运行（而非容器化）的原因之一。
-RUN useradd --create-home --uid 1000 oc \
+# UID 用 1001 而非 1000：node:22-slim 基线已存在 UID 1000 的 node 用户（useradd 会报
+# "UID 1000 is not unique"）。
+RUN useradd --create-home --uid 1001 oc \
     && mkdir -p /app/data /app/groups /app/templates \
     && chown -R oc:oc /app
 USER oc

@@ -12,7 +12,7 @@
 import "./typing.js";
 import "./permissions.js";
 import "./approvals.js";
-import "./scheduling.js";
+import "./scheduling/index.js";
 import "./agent-to-agent.js";
 import "./interactive.js";
 import "./self-mod.js";

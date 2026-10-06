@@ -21,9 +21,10 @@ import { enforceUpgradeTripwire } from "./upgrade-state.js";
 import { initDb, closeDb, getDb } from "./db/connection.js";
 import { runMigrations } from "./db/migrations/index.js";
 import { migration001 } from "./db/migrations/001-initial.js";
+import { migration002 } from "./db/migrations/002-destinations.js";
 import { startHostModules, stopHostModules } from "./host-lifecycle.js";
 import { initChannelAdapters, teardownChannelAdapters } from "./channels/channel-registry.js";
-import { wakeContainer } from "./container-runner.js";
+import { wakeContainer, sweepStaleEnvFiles } from "./container-runner.js";
 import { cleanupOrphans } from "./container-runtime.js";
 import { routeInbound, setContainerWaker } from "./router.js";
 import "./channels/index.js"; // 副作用 barrel：内置通道自注册（阶段 5 填充）
@@ -52,7 +53,7 @@ export async function main(): Promise<void> {
     // 1. 中央 DB + 迁移
     mkdirSync(DATA_DIR, { recursive: true });
     initDb(CENTRAL_DB_PATH);
-    runMigrations(getDb(), [migration001]);
+    runMigrations(getDb(), [migration001, migration002]);
     log.info("central db ready");
 
     // 1.5 回填旧 container.json 到 DB（幂等，迁移后运行）
@@ -64,6 +65,14 @@ export async function main(): Promise<void> {
       cleanupOrphans(new Set());
     } catch (err) {
       log.warn("startup orphan cleanup failed", { err });
+    }
+
+    // P2-2：启动清扫上一轮遗留的 .container-env-* 明文密钥文件（宿主被 SIGKILL/崩溃时
+    // 容器 close 回调不会执行，密钥会一直留在 DATA_DIR）
+    try {
+      sweepStaleEnvFiles();
+    } catch (err) {
+      log.warn("startup container env file sweep failed", { err });
     }
 
     // 2. 通道适配器（instance 戳印接缝：适配器保持实例盲，主机在 onInbound 戳 instance）

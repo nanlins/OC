@@ -1,65 +1,45 @@
 ﻿/**
  * memory/scaffold.ts —— 记忆系统脚手架（文件即记忆，agent 自治）
  *
- * 职责：幂等搭建 memory/（index.md + system/definition.md，只补缺失永不覆盖）；
- *       renderMemorySection 恒载渲染（16K 预算截断）。
- * 关键导出：ensureMemoryScaffold, renderMemorySection, MEMORY_FILE_BUDGET_CHARS
- * 借鉴：nanoclaw container/agent-runner/src/memory/{scaffold,context}.ts
+ * 职责：幂等搭建 memory/（index.md + system/definition.md，只补缺失永不覆盖）。
+ *       模板从 memory/templates/ 的**真实文件**读取（P1-1：不再是几行内联简版）。
+ * 关键导出：ensureMemoryScaffold, memoryDir
+ * 兼容再导出：renderMemorySection / MEMORY_FILE_BUDGET_CHARS（实现已迁到 context.ts）
+ * 借鉴：nanoclaw container/agent-runner/src/memory/scaffold.ts
  *
  * 修改记录：
  *   2026-08-12 创建（阶段 4）；重写修复转码损坏
+ *   2026-10-06 P1-1：模板外置为 memory/templates/ 真实文件；渲染与截断迁至 context.ts
  */
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { getWorkspace } from "../db/connection.ts";
 
-export const MEMORY_FILE_BUDGET_CHARS = 16000;
-export const MEMORY_TRUNCATION_NOTICE = "\n[...truncated: memory file exceeds budget; consider slimming]";
-
-const INDEX_TEMPLATE = `---
-type: index
----
-# Memory Index
-
-## Core Memory
-(agent maintained: user preferences / long-term facts)
-
-## Map
-(concept file list)
-`;
-
-const DEFINITION_TEMPLATE = `# Memory Doctrine
-
-- one file per concept; record patterns not instances; entity-centric; the index is core data.
-- facts corrected in place; structure beyond index.md and this file is freely reshaped by the agent.
-`;
+export { renderMemorySection, MEMORY_FILE_BUDGET_CHARS } from "./context.ts";
 
 export function memoryDir(): string {
   return join(getWorkspace(), "agent", "memory");
+}
+
+function templatesDir(): string {
+  // 模板随源码烘焙进镜像；运行时从这里读取（bun 容器内 /app/src/memory/templates/）
+  return join(import.meta.dir, "templates");
+}
+
+function readTemplate(rel: string): string {
+  try {
+    return readFileSync(join(templatesDir(), rel), "utf8");
+  } catch {
+    // 模板文件缺失（不应发生）：回退最小占位，确保脚手架仍幂等
+    return `# Memory\n\n(agent maintained)\n`;
+  }
 }
 
 export function ensureMemoryScaffold(): void {
   const dir = memoryDir();
   mkdirSync(join(dir, "system"), { recursive: true });
   const indexPath = join(dir, "index.md");
-  if (!existsSync(indexPath)) writeFileSync(indexPath, INDEX_TEMPLATE, { flag: "wx" });
+  if (!existsSync(indexPath)) writeFileSync(indexPath, readTemplate("index.md"), { flag: "wx" });
   const defPath = join(dir, "system", "definition.md");
-  if (!existsSync(defPath)) writeFileSync(defPath, DEFINITION_TEMPLATE, { flag: "wx" });
-}
-
-function readWithBudget(path: string): string {
-  try {
-    const text = readFileSync(path, "utf8");
-    if (text.length <= MEMORY_FILE_BUDGET_CHARS) return text;
-    return text.slice(0, MEMORY_FILE_BUDGET_CHARS) + MEMORY_TRUNCATION_NOTICE;
-  } catch {
-    return "";
-  }
-}
-
-/** 恒载两个文件：index.md + system/definition.md */
-export function renderMemorySection(): string {
-  const index = readWithBudget(join(memoryDir(), "index.md"));
-  const def = readWithBudget(join(memoryDir(), "system", "definition.md"));
-  return [`<memory index>\n${index}\n</memory>`, `<memory doctrine>\n${def}\n</memory>`].join("\n");
+  if (!existsSync(defPath)) writeFileSync(defPath, readTemplate(join("system", "definition.md")), { flag: "wx" });
 }

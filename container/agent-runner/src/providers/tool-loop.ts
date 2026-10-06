@@ -10,6 +10,7 @@
  *   2026-08-12 ai-inspector 修复：工具结果 24KB 截断
  */
 import { allTools, getTool, type ToolContext } from "../mcp-tools/registry.ts";
+import { getAgentMailbox } from "../mailbox/index.ts";
 
 export function toolSchemasOpenAI(): Array<Record<string, unknown>> {
   return allTools().map((t) => ({
@@ -22,12 +23,16 @@ export function toolSchemasAnthropic(): Array<Record<string, unknown>> {
   return allTools().map((t) => ({ name: t.name, description: t.description, input_schema: t.parameters }));
 }
 
+/**
+ * 执行一次工具调用。P0-1：经 getAgentMailbox().run 统一调度——工具 handler 在邮箱
+ * 会话内执行（连接一次打开、用毕即关），ctx.mailbox 提供持久状态读写面。
+ */
 export async function executeToolCall(name: string, argsJson: string, ctx: ToolContext): Promise<string> {
   const tool = getTool(name);
   if (!tool) return JSON.stringify({ error: `unknown tool: ${name}` });
   try {
     const args = JSON.parse(argsJson || "{}") as Record<string, unknown>;
-    const out = await tool.handler(args, ctx);
+    const out = await getAgentMailbox().run((mbox) => tool.handler(args, { ...ctx, mailbox: mbox }));
     const serialized = JSON.stringify(out);
     if (serialized.length > TOOL_RESULT_MAX_CHARS) {
       return `${serialized.slice(0, TOOL_RESULT_MAX_CHARS)}\n[…tool result truncated at ${TOOL_RESULT_MAX_CHARS} chars]`;

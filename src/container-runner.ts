@@ -4,13 +4,16 @@
  * 职责：wakeContainer（永不抛/布尔返回/in-flight 去重）、spawnContainer 十步、
  *       buildMounts（顺序即语义）、hardeningArgs、killContainer(onExit 接力)。
  * 关键导出：wakeContainer, killContainer, isContainerRunning, getActiveContainerCount,
- *           buildMounts, buildContainerArgs, hardeningArgs, containerNameFor, VolumeMount
+ *           buildMounts, buildContainerArgs, hardeningArgs, containerNameFor, VolumeMount,
+ *           sweepStaleEnvFiles, cleanupActiveEnvFiles
  *
  * 承重不变量：
  *   - wakeContainer 永不抛：true=成功，false=瞬态失败（host-sweep 重试）；调用方零防御代码；
  *   - in-flight Promise Map 防异步构建窗口内二次 spawn（双容器双回复）；
  *   - spawn 前删除孤儿心跳文件（否则 sweep 用陈旧 mtime 秒杀新容器）；
- *   - --init 非可选（--entrypoint 绕过镜像 tini 时 SIGTERM 会被 PID 1 丢弃）。
+ *   - --init 非可选（--entrypoint 绕过镜像 tini 时 SIGTERM 会被 PID 1 丢弃）；
+ *   - provider 密钥临时文件（DATA_DIR/.container-env-*，0600）三层清理：容器 close 回调 →
+ *     宿主 exit 钩子 → 下次启动 sweepStaleEnvFiles。SIGKILL 拦不住，故启动清扫是必需兜底。
  * 借鉴：nanoclaw src/container-runner.ts
  *
  * 修改记录：
@@ -18,9 +21,15 @@
  *   2026-08-12 复检修复：--shm-size 无条件附加；pids-limit floor+finite 校验
  *   2026-08-28 阶段 12 P0 修复：新增 ensureSessionDbFiles（docker run 前确保双库为文件），
  *              恢复块 rmSync 加 recursive——修复 outbound.db 被 bind-mount 误建目录致 SQLITE_CANTOPEN_ISDIR 永久卡死
+ *   2026-10-06 P2-2：新增 sweepStaleEnvFiles（启动清扫遗留明文密钥）+ cleanupActiveEnvFiles
+ *              与 process 'exit' 钩子；env 文件路径收敛到 envFilePathFor 单点
+ *   2026-10-06 P0-3：ensureSessionDbFiles 前移到任何会打开/读写会话库的逻辑之前，且两处
+ *              调用点都 fail-hard（初始化失败 return false），不再 log.warn 后继续 spawn
+ *   2026-10-06 R-2：spawnContainer 前置 isDbReady() 检查——中央库未初始化是不变量破坏，
+ *              显式拒绝并打独立日志，不再落入 catch 被吞成 "failed (transient)"
  */
 import { spawn as defaultSpawn, type ChildProcess } from "node:child_process";
-import { rmSync, statSync, writeFileSync } from "node:fs";
+import { readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import {
   CONTAINER_CPU_LIMIT,
@@ -42,6 +51,7 @@ import {
 } from "./container-runtime.js";
 import { egressNetworkArgs, ensureEgressNetwork, EgressLockdownError } from "./egress-lockdown.js";
 import { getAgentGroup } from "./db/agent-groups.js";
+import { isDbReady } from "./db/connection.js";
 import { initGroupFilesystem } from "./group-init.js";
 import { resolveGroupFolderPath } from "./group-folder.js";
 import {
@@ -64,6 +74,68 @@ import { log } from "./log.js";
 import type { Session } from "./types.js";
 
 export type { VolumeMount };
+
+// ---- 容器密钥临时文件（--env-file）生命周期 ----
+
+/** DATA_DIR 下 provider 密钥临时文件的命名前缀（0600，经 --env-file 注入，不进 argv）。 */
+const ENV_FILE_PREFIX = ".container-env-";
+
+function envFilePathFor(name: string): string {
+  return join(DATA_DIR, `${ENV_FILE_PREFIX}${name}`);
+}
+
+/**
+ * 启动清扫：删除上一轮宿主遗留的 .container-env-* 密钥文件（P2-2）。
+ *
+ * 为什么需要：这些文件只在容器子进程 'close' 事件里删。宿主被 SIGKILL、崩溃或机器断电时
+ * 该回调永不执行，真实 API 密钥就以明文留在 DATA_DIR 里，一直躺到下次有人注意到。
+ * 启动时本安装不可能有自己拉起的容器在跑（孤儿容器同批清理），所以此刻存在的都是陈旧文件，
+ * 无条件删除是安全的。
+ *
+ * @returns 删除的文件数
+ */
+export function sweepStaleEnvFiles(): number {
+  let entries: string[];
+  try {
+    entries = readdirSync(DATA_DIR);
+  } catch {
+    return 0; // DATA_DIR 尚未创建：无从遗留
+  }
+  let removed = 0;
+  for (const entry of entries) {
+    if (!entry.startsWith(ENV_FILE_PREFIX)) continue;
+    try {
+      rmSync(join(DATA_DIR, entry), { force: true });
+      removed += 1;
+    } catch (err) {
+      log.warn(`stale container env file removal failed: ${entry}`, { err: String(err) });
+    }
+  }
+  if (removed > 0) log.warn(`removed ${removed} stale container env file(s) left by a previous host run`);
+  return removed;
+}
+
+/**
+ * 宿主退出前尽力删除仍在册容器的密钥文件（P2-2）。
+ * 只挂 'exit'（同步、不阻塞事件循环）：SIGKILL 无法拦截，那种情况由下次启动的
+ * sweepStaleEnvFiles 兜底——两层合起来才覆盖"进程异常"。
+ */
+export function cleanupActiveEnvFiles(): void {
+  for (const entry of activeContainers.values()) {
+    try {
+      rmSync(envFilePathFor(entry.name), { force: true });
+    } catch {
+      /* 尽力而为：退出路径不得抛错 */
+    }
+  }
+}
+
+let exitHookInstalled = false;
+function installEnvFileExitHook(): void {
+  if (exitHookInstalled) return;
+  exitHookInstalled = true;
+  process.on("exit", () => cleanupActiveEnvFiles());
+}
 
 interface ActiveContainer {
   name: string;
@@ -193,6 +265,16 @@ function ensureSessionDbFiles(session: Session): void {
 
 async function spawnContainer(session: Session): Promise<boolean> {
   try {
+    // R-2：中央库未就绪 = 不变量破坏（编程错误/启动顺序错乱），不是 docker 瞬时故障。
+    // 旧实现让 getDb() 抛错落入底部 catch，被吞成 "failed (transient)"，sweep 会永远静默重试，
+    // 而真实原因永远不可见。这里显式拒绝并给出可诊断的日志。
+    if (!isDbReady()) {
+      log.error(
+        "spawnContainer refused: central db not initialized (invariant broken — not a transient docker failure)",
+        { sessionId: session.id },
+      );
+      return false;
+    }
     const group = getAgentGroup(session.agent_group_id);
     if (!group) return false;
 
@@ -205,6 +287,17 @@ async function spawnContainer(session: Session): Promise<boolean> {
         return false;
       }
       throw err;
+    }
+
+    // P0-3：必须先确保双库以文件+完整 schema 形式存在，再进入任何会打开/读写它们的逻辑。
+    // 旧顺序是先 writeDestinations（开 inbound.db）、后 integrity check（开 outbound.db），
+    // 最后才 ensureSessionDbFiles，且失败只 log.warn 继续 spawn——若 DB 初始化失败，容器
+    // 起来后读/写缺表或缺文件的库会静默崩溃或永久卡死。现在前置并 fail-hard。
+    try {
+      ensureSessionDbFiles(session);
+    } catch (err) {
+      log.error("session db init failed; refusing spawn", { sessionId: session.id, err });
+      return false;
     }
 
     const config = materializeContainerJson(group); // DB→文件，对象贯穿后续
@@ -240,12 +333,14 @@ async function spawnContainer(session: Session): Promise<boolean> {
     const name = containerNameFor(session);
     if (!CONTAINER_NAME_RE.test(name)) return false;
     // fix-plan P1：provider 密钥写入 0600 临时文件经 --env-file 注入（不进 argv），容器退出时清理
+    // P2-2：清理共三层——容器 close 回调、宿主 exit 钩子、下次启动 sweepStaleEnvFiles
     let envFilePath: string | null = null;
     const envEntries = Object.entries(provider.env);
     if (envEntries.length > 0) {
-      envFilePath = join(DATA_DIR, `.container-env-${name}`);
+      envFilePath = envFilePathFor(name);
       try {
         writeFileSync(envFilePath, envEntries.map(([k, v]) => `${k}=${v}`).join("\n") + "\n", { mode: 0o600 });
+        installEnvFileExitHook();
       } catch (err) {
         log.warn("container env file write failed; falling back to -e", { err });
         envFilePath = null;
@@ -287,10 +382,12 @@ async function spawnContainer(session: Session): Promise<boolean> {
 
     // P0 修复（阶段 12 实测）：上方恢复逻辑可能已删除 outbound.db 文件——docker run 前必须确保
     // 双库以文件形式存在，否则 bind-mount 会把缺失路径创建成目录（SQLITE_CANTOPEN_ISDIR 永久卡死）。
+    // P0-3：这里若失败也必须拒绝 spawn（旧实现只 log.warn 后继续，等于吞掉了 DB 初始化错误）。
     try {
       ensureSessionDbFiles(session);
     } catch (err) {
-      log.warn("ensureSessionDbFiles failed (transient)", { sessionId: session.id, err });
+      log.error("session db re-init failed before docker run; refusing spawn", { sessionId: session.id, err });
+      return false;
     }
 
     // 删除孤儿心跳文件（否则 sweep 用陈旧 mtime 秒杀新容器）

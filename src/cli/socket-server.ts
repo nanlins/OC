@@ -9,8 +9,11 @@
  *
  * 修改记录：
  *   2026-08-12 创建（阶段 7）
+ *   2026-10-06 stopCliServer 改 async 并等待 win32 命名管道真正释放（原同步返回导致快速
+ *              重启 EADDRINUSE，且失败只被 log，表现为"oc 连不上宿主"）；绑定失败改 log.error
+ *              并给出可行动提示
  */
-import { createServer, type Server, type Socket } from "node:net";
+import { createServer, connect, type Server, type Socket } from "node:net";
 import { chmodSync, existsSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { DATA_DIR, INSTALL_SLUG } from "../config.js";
@@ -84,13 +87,62 @@ export function startCliServer(): void {
     }
     log.info(`cli control listening: ${path}`);
   });
-  server.on("error", (err) => log.error("cli control socket error", { err }));
+  server.on("error", (err) => {
+    // 绑定失败必须吼出来：只记 debug 会让 `oc` 静默连不上宿主，看起来像"主机没起"
+    log.error(
+      `cli control socket failed to bind: ${path} (${(err as NodeJS.ErrnoException).code ?? "?"}). ` +
+        `If EADDRINUSE on Windows, a previous host process has not released the named pipe yet.`,
+      { err },
+    );
+  });
 }
 
-export function stopCliServer(): void {
-  server?.close();
+/**
+ * 停止控制 socket，并等待命名管道真正释放。
+ *
+ * 承重（T2 期间实测）：Windows 上 `server.close()` 返回时命名管道**尚未**释放，
+ * 紧随其后的 `listen()` 会 EADDRINUSE。原实现是同步 fire-and-forget，于是"快速重启宿主"
+ * 或"下一个测试文件重新起服务"都会绑定失败——而失败只被 log，`oc` 命令表现为
+ * "cannot reach the OC host"，与宿主真的没起无法区分。
+ * `channels/cli.ts` 的 teardown 早就为聊天 socket 做了同样的等待，控制 socket 此前漏了。
+ *
+ * 改为 async 是安全的：host-lifecycle 的 Hook 类型是 `() => void | Promise<void>`，
+ * stopHostModules 会 await。
+ */
+export async function stopCliServer(): Promise<void> {
+  const s = server;
   server = null;
-  if (process.platform !== "win32") rmSync(cliControlPath(), { force: true });
+  if (!s) return;
+  // closeAllConnections 是 Node 18.2+ 的 API，@types/node 的 net.Server 未声明；
+  // 可选调用即可，缺失时 close() 回调仍会完成（只是要等空闲连接自然超时）。
+  const withCloseAll = s as typeof s & { closeAllConnections?: () => void };
+  try {
+    withCloseAll.closeAllConnections?.();
+  } catch {
+    /* 忽略：不影响 close */
+  }
+  await new Promise<void>((resolve) => s.close(() => resolve()));
+  if (process.platform !== "win32") {
+    rmSync(cliControlPath(), { force: true });
+    return;
+  }
+  // 轮询直到连接被拒（= 管道已释放），上限 1.5s，绝不无限等待
+  const deadline = Date.now() + 1500;
+  while (Date.now() < deadline) {
+    const stillBound = await new Promise<boolean>((resolve) => {
+      const probe = connect(cliControlPath(), () => {
+        probe.destroy();
+        resolve(true);
+      });
+      probe.on("error", () => {
+        probe.destroy();
+        resolve(false);
+      });
+    });
+    if (!stillBound) return;
+    await new Promise((r) => setTimeout(r, 50));
+  }
+  log.warn("cli control named pipe still bound after 1.5s; a fast restart may hit EADDRINUSE");
 }
 
 onHostStart("cli-server", () => startCliServer());

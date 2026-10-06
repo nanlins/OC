@@ -5,7 +5,8 @@
  *       writeSessionMessage（open-write-CLOSE）→ outbox 读写（对称 symlink 防御）→ 容器状态标记。
  * 关键导出：sessionDir, inboundDbPath, outboundDbPath, heartbeatPath, initSessionFolder,
  *           resolveSession, writeSessionMessage, writeOutboundDirectFor, writeSessionRoutingFor,
- *           readOutboxFiles, clearOutbox, saveInboundAttachments, markContainerRunning/Stopped/Idle
+ *           readOutboxFiles, clearOutbox, saveInboundAttachments, clearSessionContext,
+ *           markContainerRunning/Stopped/Idle
  *
  * 承重不变量（见 src/db/session-db.ts 头部）：
  *   1. journal_mode=DELETE；2. 每次操作 open-write-CLOSE；3. 每文件单写者；4. 心跳=文件 touch。
@@ -15,6 +16,8 @@
  *   2026-08-12 创建（阶段 2）
  *   2026-08-12 se-inspector 修复：clearOutbox 三层防御（P0）；writeSessionMessage 重供给先于 open（P1）；
  *              readOutboxFiles readdir 入 try（P1）
+ *   2026-10-06 P0-1：新增 clearSessionContext（定义"清空会话上下文"的唯一语义，
+ *              供 oc sessions clear 与 /new 共用，取代各自的假实现/重复 SQL）
  */
 import {
   existsSync,
@@ -166,6 +169,42 @@ export function writeSessionRoutingFor(
   const db = openInboundDb(inboundDbPath(session.agent_group_id, session.id));
   try {
     writeSessionRouting(db, routing);
+  } finally {
+    db.close();
+  }
+}
+
+// ---- 会话上下文清空（/new 与 oc sessions clear 共用同一语义） ----
+
+/**
+ * 清空会话上下文 = 删除容器侧对话状态键（history:* / continuation:* / current_in_reply_to / todos）。
+ *
+ * 范围界定（承重，勿随意扩大）：
+ *   删 —— outbound.session_state 的对话键：容器每次 query 都从 session_state 读历史
+ *         （container/agent-runner/src/providers/*.ts 的 getHistory），删掉即"失忆"，
+ *         无需重启容器，下一条消息自然从空上下文开始。
+ *   留 —— messages_in（含定时任务行与入站记录，删了会毁掉调度）、
+ *         delivered（投递簿记，删了会二次投递）、
+ *         destinations（路由表兼 a2a ACL）、session_routing、
+ *         messages_out（未投递回复不得静默丢弃）、processing_ack（sweep 认领源）。
+ *
+ * 属文件头不变量 3 的"host-sweep 维护写"同类成文例外：主机写 outbound，但只删对话键，
+ * 不与容器写的字段竞争。open-write-CLOSE（不变量 2）。
+ *
+ * @returns 删除的键数；会话库尚未创建时返回 0（幂等，不抛错）
+ */
+export function clearSessionContext(session: Session): number {
+  const path = outboundDbPath(session.agent_group_id, session.id);
+  if (!existsSync(path)) return 0;
+  const db = openOutboundDbRw(path);
+  try {
+    ensureOutboundSchema(db);
+    return db
+      .prepare(
+        `DELETE FROM session_state
+          WHERE key LIKE 'history:%' OR key LIKE 'continuation:%' OR key = 'current_in_reply_to' OR key = 'todos'`,
+      )
+      .run().changes;
   } finally {
     db.close();
   }

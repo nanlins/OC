@@ -132,3 +132,17 @@ export function setHistory(provider: string, entries: HistoryEntry[]): void {
 export function clearHistory(provider: string): void {
   del(`history:${provider}`);
 }
+
+// ---- 泛型 KV 面（P0-1：mailbox 层经此统一读写 session_state，不再各自裸 SQL） ----
+
+export function getState(key: string): string | null {
+  return get(key);
+}
+
+export function setState(key: string, value: string): void {
+  set(key, value);
+}
+
+export function deleteState(key: string): void {
+  del(key);
+}

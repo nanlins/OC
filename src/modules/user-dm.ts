@@ -5,6 +5,7 @@
  *       审批/通知/配对握手等一切"主动 DM 用户"的入口统一走本函数。
  * 关键导出：ensureUserDm
  * 承重不变量：缓存行指向的 messaging_group 已删时重新解析；直址通道（handle 即 DM id）免 openDM 往返。
+ * 接线状态：未接线（全仓无调用方；db/user-dms.ts 同样无消费方，详见 modules/README.md）。
  * 借鉴：nanoclaw src/modules/permissions/user-dm.ts（同构简化）
  *
  * 修改记录：2026-08-26 创建（阶段 12：补齐 nanoclaw user_dms 冷 DM 缓存逻辑）
@@ -92,3 +93,9 @@ export async function ensureUserDm(userId: string): Promise<MessagingGroup | nul
   upsertUserDm({ user_id: userId, channel_type: channelType, messaging_group_id: mg.id });
   return mg;
 }
+/*
+ * 修改记录：
+ *   2026-08-26 创建（阶段 12：补齐 nanoclaw user_dms 冷 DM 缓存逻辑）
+ *   2026-10-06 覆盖率核查：确认未接线（ensureUserDm 与 db/user-dms.ts 均无调用方），如实标注；
+ *              刻意不补测试以免伪装完成。启用时须接入审批/通知的主动 DM 出口。
+ */

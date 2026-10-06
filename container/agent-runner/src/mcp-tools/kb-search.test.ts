@@ -15,12 +15,12 @@ const ctx: ToolContext = { routing: { platformId: null, channelType: null, threa
 let dir: string;
 beforeEach(() => {
   dir = mkdtempSync(join(tmpdir(), "oc-kb-"));
-  process.env.OPENCLAW_KB_DIR = dir;
+  process.env.OC_KB_DIR = dir;
   clearToolsForTest();
   registerKbSearchTool();
 });
 afterEach(() => {
-  delete process.env.OPENCLAW_KB_DIR;
+  delete process.env.OC_KB_DIR;
   rmSync(dir, { recursive: true, force: true });
   clearToolsForTest();
 });
@@ -45,7 +45,7 @@ describe("kb_search tool", () => {
   });
 
   it("missing kb dir returns empty hits + note", async () => {
-    process.env.OPENCLAW_KB_DIR = join(dir, "nonexistent");
+    process.env.OC_KB_DIR = join(dir, "nonexistent");
     const tool = getTool("kb_search")!;
     const out = (await tool.handler({ query: "x" }, ctx)) as { hits: unknown[]; note?: string };
     expect(out.hits).toEqual([]);

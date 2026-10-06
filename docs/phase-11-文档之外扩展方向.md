@@ -2,6 +2,16 @@
 
 > 阶段：实现"五、文档之外可扩展方向"中用户选择的 5 个类别
 
+> **⚠ 后续变更（2026-10-06，P2-1 死代码清理）**：本阶段产出的下列文件已从仓库删除，
+> 因为它们自创建起**全仓零 import**——既不在 `src/index.ts` 启动链上，也没有任何测试引用，
+> 属于"看起来已实现但从不执行"的代码：
+> `src/security/input-guard.ts`、`src/security/content-filter.ts`、
+> `src/security/api-key-manager.ts`、`src/security/audit.ts`、`src/providers/fallback.ts`、
+> `src/providers/token-budget.ts`。
+> 其中"审计用 JSONL 文件"这一决策已被实际实现取代：线上唯一审计源是中央库 `guard_audit` 表
+> （`src/modules/observability.ts` 注册 audit sink，`src/delivery-guard.ts` 每次判定写入，
+> `src/web/api.ts` 的 `/api/audit` 读取）。下文表格保留原样作为历史记录，不再代表现状。
+
 ## 一、重要决策
 
 | 决策 | 理由 |

@@ -5,6 +5,7 @@
  *       通过 outbound DB 投递通知消息，复用现有投递管线。
  * 关键导出：sendNotification, notifyOnTaskComplete, notifyOnApprovalNeeded, notifyOnError
  * 知识文档映射：04-Agent应用详解 §4.12 Human-in-the-Loop
+ * 接线状态：未接线（全仓无调用方；表结构完备但无投递管线消费，详见 modules/README.md）。
  *
  * 修改记录：2026-08-24 创建（阶段 11 五、文档之外可扩展方向）
  */
@@ -163,3 +164,9 @@ export function unreadCount(userId: string | null): number {
     .get(userId) as { cnt: number } | undefined;
   return row?.cnt ?? 0;
 }
+/*
+ * 修改记录：
+ *   2026-08-24 创建（阶段 11 五、文档之外可扩展方向）
+ *   2026-10-06 覆盖率核查：确认未接线（全仓无调用方），如实标注；刻意不补测试以免伪装完成。
+ *              启用时须接入审批/任务完成路径（调用 notifyOnApprovalNeeded 等）并补投递消费者。
+ */

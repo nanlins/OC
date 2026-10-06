@@ -3,7 +3,7 @@
   "configVersion": 1,
   "workspaces": {
     "": {
-      "name": "openclaw-agent-runner",
+      "name": "OC-agent-runner",
       "dependencies": {
         "@anthropic-ai/sdk": "^0.39.0",
         "@modelcontextprotocol/sdk": "^1.12.0",

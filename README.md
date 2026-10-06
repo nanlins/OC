@@ -72,9 +72,9 @@ $ pnpm chat
 › 你好，介绍一下你自己
 agent 你好！我是你的个人助手，运行在隔离容器里……
 › /config
-agent 当前配置：组 provider=openai 模型=deepseek-v4-flash ……
-› /model deepseek-v4-flash
-agent 模型已设为：deepseek-v4-flash（下一条消息生效）
+agent 当前配置：组 provider=openai 模型=deepseek-flash ……
+› /model deepseek-flash
+agent 模型已设为：deepseek-flash（下一条消息生效）
 ```
 
 非交互一行式（脚本/CI 可用）：
@@ -147,3 +147,7 @@ registerTools([{
   - .prettierrc：endOfLine 设为 auto，兼容 autocrlf 的 CRLF 工作区，本地与 CI 格式门禁标准统一
 
 - 2026-10-02：补充基础设施与端口说明（无 Redis/PG、SQLite、WEB_PORT 8080）
+
+- 2026-10-06：
+  - package.json：vitest 与 @vitest/coverage-v8 精确锁定 4.1.10（消除 mixed versions 警告，两者不再漂移）
+  - 覆盖率核查：src/cli/commands 补 handler 最小单测；notifications/rich-media/user-dm 确认未接线，如实标注

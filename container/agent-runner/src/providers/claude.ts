@@ -8,6 +8,7 @@
  * 修改记录：
  *   2026-08-12 创建（阶段 4）；重写修复转码损坏
  *   2026-08-12 ai-inspector 修复：system 注入+历史持久化；max_tokens 截断标注；空文本兜底
+ *   2026-10-06 P0-2：显式 baseURL 指向宿主代理（与 openai.ts 对称），密钥不进容器
  */
 import Anthropic from "@anthropic-ai/sdk";
 import { getContinuation, setContinuation, getHistory, setHistory, type HistoryEntry } from "../db/session-state.ts";
@@ -29,7 +30,15 @@ export class ClaudeProvider implements AgentProvider {
   private ctxFactory: (routing?: RoutingContext) => ToolContext;
 
   constructor(config: RunnerConfig, ctxFactory: (routing?: RoutingContext) => ToolContext, client?: Anthropic) {
-    this.client = client ?? new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY ?? "missing" });
+    // P0-2（密钥不进容器）：ANTHROPIC_BASE_URL 指向宿主 LLM 代理，真实密钥由主机在代理侧注入。
+    // 容器只持占位 key（SDK 构造要求非空）；代理会剥掉入站 x-api-key 再换上主机密钥。
+    // 未配置代理时回退直连（旧行为，需容器内确有 ANTHROPIC_API_KEY）。
+    this.client =
+      client ??
+      new Anthropic({
+        apiKey: process.env.ANTHROPIC_API_KEY ?? "proxy",
+        baseURL: process.env.ANTHROPIC_BASE_URL ?? undefined,
+      });
     this.model = config.model ?? "claude-sonnet-4-5";
     this.ctxFactory = ctxFactory;
   }

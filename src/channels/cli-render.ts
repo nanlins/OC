@@ -9,6 +9,7 @@
  * 修改记录：2026-08-25 创建（阶段 12：CLI 聊天界面）
  */
 import kleur from "kleur";
+import { brand, accentGreen, dim } from "../theme.js";
 
 export type CliFrame =
   | { kind: "chat"; text: string; operation?: string | null; inReplyTo?: string | null }
@@ -17,12 +18,12 @@ export type CliFrame =
   | { kind: "end"; inReplyTo?: string | null }
   | { kind: "error"; text: string };
 
-export const USER_PREFIX = kleur.blue(" you  ");
-export const AGENT_PREFIX = kleur.green(" agent");
-/** 与 " agent" 显示等宽的空格缩进：消息后续段落对齐用（阶段 12 实测修复：不再每行重复 agent 前缀） */
+export const USER_PREFIX = brand(" you  ");
+export const AGENT_PREFIX = accentGreen(" agent");
+/** Indent matching " agent" display width for message continuation alignment */
 export const AGENT_INDENT = " ".repeat(6);
-export const TOOL_PREFIX = kleur.yellow("  ▸  ");
-export const SYSTEM_PREFIX = kleur.gray("  ·  ");
+export const TOOL_PREFIX = kleur.yellow("  \u25b8  ");
+export const SYSTEM_PREFIX = dim("  \u00b7  ");
 export const ERROR_PREFIX = kleur.red("  !  ");
 
 /** 工具状态符：运行中 spinner（调用方按 tick 轮换传入），完成 ✓，失败 ✗ */
@@ -79,17 +80,16 @@ export function renderTool(
   tick: number = 0,
   args?: string | null,
 ): string {
-  const suffix =
-    status !== "running" && elapsedMs !== undefined ? kleur.gray(`  ${(elapsedMs / 1000).toFixed(1)}s`) : "";
+  const suffix = status !== "running" && elapsedMs !== undefined ? dim(`  ${(elapsedMs / 1000).toFixed(1)}s`) : "";
   const cmd = args ? kleur.cyan(`  $ ${args}`) : "";
-  return `${TOOL_PREFIX}${toolStatusGlyph(status, tick)} ${kleur.dim(tool)}${suffix}${cmd}`;
+  return `${TOOL_PREFIX}${toolStatusGlyph(status, tick)} ${dim(tool)}${suffix}${cmd}`;
 }
 
 export function renderError(text: string): string {
   return `${ERROR_PREFIX}${kleur.red(text)}`;
 }
 
-/** 帧 → 终端行数组（end 帧返回空，由调用方控制提示符） */
+/** Frame -> terminal line array (end frame returns empty, caller controls prompt) */
 export function renderFrame(frame: CliFrame, tick: number = 0): string[] {
   switch (frame.kind) {
     case "chat":
@@ -100,9 +100,9 @@ export function renderFrame(frame: CliFrame, tick: number = 0): string[] {
       return [renderError(frame.text)];
     case "meta":
       return [
-        kleur.gray(
-          ` ── ${frame.agent ?? "agent"} · ${frame.model ?? "?"} · ${frame.provider ?? "?"} ` +
-            "─".repeat(Math.max(0, 40 - (frame.agent ?? "").length)),
+        dim(
+          ` \u2500\u2500 ${frame.agent ?? "agent"} \u00b7 ${frame.model ?? "?"} \u00b7 ${frame.provider ?? "?"} ` +
+            "\u2500".repeat(Math.max(0, 40 - (frame.agent ?? "").length)),
         ),
       ];
     case "end":
@@ -113,4 +113,5 @@ export function renderFrame(frame: CliFrame, tick: number = 0): string[] {
 /*
  * 修改记录：
  *   2026-08-25 阶段 12：CLI 聊天界面（meta/tool/end 帧协议 + TUI 渲染）
+ *   2026-10-04 P0-1：硬编码 kleur 颜色替换为统一主题 API (src/theme.ts)
  */

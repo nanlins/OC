@@ -1,14 +1,16 @@
 /**
  * mcp-tools/kb-search.ts —— kb_search 工具：群组知识库检索（fix-plan：kb_search 接入 agent）
  *
- * 职责：在容器内检索 KB 目录（默认 /workspace/agent/kb，可经 OPENCLAW_KB_DIR 注入）的 md/txt 文件；
+ * 职责：在容器内检索 KB 目录（默认 /workspace/agent/kb，可经 OC_KB_DIR 注入）的 md/txt 文件；
  *       递归分块 + CJK bigram/latin 分词 + 覆盖率打分 + 阈值过滤 + 引用溯源（source）。
  * 架构说明：agent 运行于容器、与宿主中央 DB 隔离，故 KB 为容器工作区内文件（宿主 memory-kb 的镜像/投放点），
  *       使 kb_search 成为可同步返回的 in-container 工具；embedding 版检索在宿主 memory-kb（searchKbVector）。
  * 关键导出：registerKbSearchTool, tokenizeKb, chunkKbText
  * 承重不变量：只在 KB 目录内读取（resolve 后前缀校验）；文件数/深度上限防资源放大。
  *
- * 修改记录：2026-08-14 创建（fix-plan：kb_search 接入 agent）
+ * 修改记录：
+ *   2026-08-14 创建（fix-plan：kb_search 接入 agent）
+ *   2026-10-06 T1-4：OPENCLAW_KB_DIR → OC_KB_DIR（统一 OC_* 环境变量家族）
  */
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join, resolve, relative } from "node:path";
@@ -62,7 +64,7 @@ export function chunkKbText(text: string, size = CHUNK_SIZE, overlap = CHUNK_OVE
 }
 
 export function kbDir(): string {
-  return process.env.OPENCLAW_KB_DIR ?? join(getWorkspace(), "agent", "kb");
+  return process.env.OC_KB_DIR ?? join(getWorkspace(), "agent", "kb");
 }
 
 interface KbChunk {

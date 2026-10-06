@@ -16,11 +16,14 @@
  *   2026-08-25 阶段 12 重写：TUI 交互（raw mode + 历史 + 打字机 + meta/tool/end 帧）
  *   2026-08-25 阶段 12 实测修复：打字机切 ANSI 乱码 → 纯文本块；prompt 重复 → end 唯一重绘；
  *             用户消息回显；打字机期间禁输入；meta 灰色行；状态栏不再依赖 meta
+ *   2026-10-04 P0-2：品牌欢迎横幅；P0-6：状态栏显示 agent/model/provider、Ctrl+T 工具详情切换
  */
 import { connect } from "node:net";
 import { createHash } from "node:crypto";
 import { join } from "node:path";
 import kleur from "kleur";
+import { brandChip, brandBold, accentGreen, dim } from "../src/theme.js";
+import { displayWidth as sharedDisplayWidth } from "../src/display-width.js";
 import {
   renderChat,
   renderError,
@@ -42,6 +45,9 @@ const interactive = process.stdin.isTTY === true && !process.env.CI;
 
 // ---- 终端状态 ----
 let connected = false;
+let statusAgent = "";
+let statusModel = "";
+let statusProvider = "";
 
 // ---- 输入状态 ----
 let inputBuf = "";
@@ -50,15 +56,11 @@ const history: string[] = [];
 let historyIdx = -1;
 let typewriterActive = false;
 let typewriterSkip = false;
+let toolDetailOpen = false;
+let lastToolFrame: CliFrame & { kind: "tool" } | null = null;
 
-/** 终端显示宽度：ASCII 1 列，CJK/全角 2 列（光标定位用） */
-function displayWidth(s: string): number {
-  let w = 0;
-  for (const ch of s) {
-    w += /[\u1100-\u115f\u2e80-\uff60\uffe0-\uffe6]/.test(ch) ? 2 : 1;
-  }
-  return w;
-}
+/** Terminal display width: shared CJK-aware implementation (P2-3; was a local duplicate). */
+const displayWidth = sharedDisplayWidth;
 
 /**
  * 输入编辑提交：先清旧输入行（按旧内容行数），再更新缓冲区并重绘，最后光标定位。
@@ -80,7 +82,15 @@ function redrawPrompt(): void {
 }
 
 function renderStatusBar(): void {
-  write(kleur.inverse(" OC chat · " + (connected ? "就绪（输入 /help 看命令）" : "连接中…") + " ") + "\n");
+  let info = "OC chat";
+  if (connected) {
+    if (statusAgent) info += ` · ${statusAgent}`;
+    if (statusModel) info += ` · ${statusModel}`;
+    if (statusProvider) info += ` · ${statusProvider}`;
+  } else {
+    info += " · connecting...";
+  }
+  write(kleur.inverse(" " + info + " ") + "\n");
 }
 
 /** 计算输入行（含 "› " 提示符）在终端折成几行。
@@ -236,8 +246,12 @@ function drainQueue(): void {
     case "meta": {
       const agent = frame.agent ?? "?";
       const model = frame.model ?? "?";
-      write(kleur.gray(` · 会话 ${agent.slice(0, 8)} · ${model}`) + "\n");
-      drainQueue(); // meta 瞬时渲染，继续处理下一条
+      const provider = frame.provider ?? "?";
+      statusAgent = frame.agent ?? "";
+      statusModel = frame.model ?? "";
+      statusProvider = frame.provider ?? "";
+      write(dim(` \u00b7 session ${agent.slice(0, 8)} \u00b7 ${model}`) + "\n");
+      drainQueue(); // meta renders instantly, continue processing next
       break;
     }
     case "chat":
@@ -248,7 +262,11 @@ function drainQueue(): void {
       });
       break;
     case "tool":
+      lastToolFrame = frame as CliFrame & { kind: "tool" };
       write(renderFrame(frame).join("\n") + "\n");
+      if (toolDetailOpen && (frame as { args?: string | null }).args) {
+        write(dim("  `-- ") + ((frame as { args?: string | null }).args ?? "") + "\n");
+      }
       drainQueue();
       break;
     case "error":
@@ -290,7 +308,9 @@ let buf = "";
 socket.on("connect", () => {
   connected = true;
   renderStatusBar();
-  write(kleur.gray(" 输入消息后回车发送 · /help 帮助 · /exit 退出") + "\n");
+  write(brandBold("  Welcome to OC Chat") + "\n");
+  write(dim("  Type a message and press Enter · /help for commands · /exit to quit") + "\n");
+  write(brandChip(" OC ") + "  " + accentGreen("you") + " / " + brandBold("agent") + "\n");
   redrawPrompt();
 });
 
@@ -311,8 +331,8 @@ socket.on("data", (chunk) => {
 
 socket.on("error", (err) => {
   restoreTerminal();
-  console.error(kleur.red("连接失败：" + err.message));
-  console.error(kleur.gray("请先启动主机：pnpm dev"));
+  console.error(kleur.red("Connection failed: " + err.message));
+  console.error(dim("Please start the host first: pnpm dev"));
   process.exit(1);
 });
 
@@ -347,20 +367,21 @@ function sendUserMessage(text: string): void {
 
 const HELP_TEXT = [
   "",
-  kleur.bold("OC chat 命令"),
-  "  Enter    发送",
-  "  ↑ / ↓    历史",
-  "  Ctrl+C   跳过打字机",
-  "  Ctrl+D   退出（空输入时）",
-  "  /help    本帮助",
-  "  /config  查看供应商/模型/密钥配置",
-  "  /setup   填写供应商/端点/密钥/模型并存 .env",
-  "  /model   查看模型；/model <名称> 切换",
-  "  /agent   列出 Agent 组",
-  "  /export  导出会话为 JSON",
-  "  /new     开始新会话（清上下文）",
-  "  /clear   清空会话上下文",
-  "  /exit    退出",
+  kleur.bold("OC chat commands"),
+  "  Enter      Send",
+  "  \u2191 / \u2193      History",
+  "  Ctrl+C     Skip typewriter",
+  "  Ctrl+D     Exit (empty input)",
+  "  Ctrl+T     Toggle tool detail",
+  "  /help      This help",
+  "  /config    View provider/model/key config",
+  "  /setup     Fill provider/endpoint/key/model into .env",
+  "  /model     View model; /model <name> to switch",
+  "  /agent     List agent groups",
+  "  /export    Export session as JSON",
+  "  /new       Start new session (clear context)",
+  "  /clear     Clear session context",
+  "  /exit      Exit",
   "",
 ].join("\n");
 
@@ -459,7 +480,7 @@ if (!interactive) {
       }
 
       if (key.ctrl && key.name === "c") {
-        write("\n" + kleur.gray("(输入 /exit 退出)") + "\n");
+        write("\n" + dim("(type /exit to quit)") + "\n");
         redrawPrompt();
         return;
       }
@@ -469,6 +490,18 @@ if (!interactive) {
           restoreTerminal();
           write("\n");
           process.exit(0);
+        }
+        return;
+      }
+
+      if (key.ctrl && key.name === "t") {
+        toolDetailOpen = !toolDetailOpen;
+        if (lastToolFrame && (lastToolFrame as { args?: string | null }).args) {
+          clearInputLine();
+          if (toolDetailOpen) {
+            write(dim("  `-- ") + ((lastToolFrame as { args?: string | null }).args ?? "") + "\n");
+          }
+          redrawPrompt();
         }
         return;
       }

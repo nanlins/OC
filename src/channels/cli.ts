@@ -2,14 +2,21 @@
  * channels/cli.ts —— CLI 通道适配器（内置，socket 通信）
  *
  * 职责：net server（Unix socket / Windows named pipe）；客户端发 JSON 行 {text} 或纯文本 →
- *       onInbound('local', null, msg)；deliver 写 JSON 行给已连接客户端。
- * 关键导出：CLI_DEFAULTS, cliSocketPath
+ *       onInbound('local', null, msg)；deliver 写 JSON 行给已连接客户端；
+ *       ensureCliWiring 幂等接线（让"装完即可对话"成立）。
+ * 关键导出：CLI_DEFAULTS, cliSocketPath, CLI_CHANNEL_TYPE, CLI_PLATFORM_ID, CLI_INSTANCE,
+ *           ensureCliWiring
  * 核心模式：socket 路径权限即身份（chmod 0600 / pipe ACL）；单聊天槽位语义简化为多客户端广播。
  * 借鉴：nanoclaw src/channels/cli.ts
  *
  * 修改记录：
  *   2026-08-12 创建（阶段 5）
  *   2026-08-12 修复：win32 teardown 等待管道释放（防旧 server 竞态）
+ *   2026-10-06 T2：新增 ensureCliWiring + CLI 身份常量单一来源。修掉首次安装后第一条
+ *              消息被静默丢弃的两个独立根因：① demo-setup 把 instance 写成 "default"，
+ *              与 router 查询用的 "cli" 不匹配；② createMessagingGroup 默认
+ *              unknown_sender_policy=strict，而 cli:local 从不是成员，accessGate 直接拒。
+ *              策略一律取自本通道自己声明的 CLI_DEFAULTS，不硬编码。
  */
 import { createServer, connect, type Server, type Socket } from "node:net";
 import { chmodSync, existsSync, rmSync } from "node:fs";
@@ -17,6 +24,8 @@ import { join } from "node:path";
 import { randomUUID } from "node:crypto";
 import { DATA_DIR, INSTALL_SLUG } from "../config.js";
 import { log } from "../log.js";
+import { getDb } from "../db/connection.js";
+import { createMessagingGroup, createWiring, findByPlatform, listWirings } from "../db/messaging-groups.js";
 import { registerChannelAdapter } from "./channel-registry.js";
 import type { ChannelAdapter, ChannelDefaults, ChannelSetup, OutboundMessage } from "./adapter.js";
 
@@ -38,6 +47,113 @@ export const CLI_DEFAULTS: ChannelDefaults = {
   group: { engageMode: "pattern", engagePattern: ".", threads: false, unknownSenderPolicy: "public" },
   mentions: "never",
 };
+
+/**
+ * CLI 通道的固定身份（单一来源）。
+ *
+ * 三个值必须与下面两处严格一致，否则 router 查不到 messaging group：
+ *   - setup() 里的 onInbound(CLI_PLATFORM_ID, null, ...)
+ *   - router 的 instance = event.instance ?? event.channelType，而 index.ts 用
+ *     adapter.instance ?? adapter.channelType 戳印 —— 本适配器不声明 instance，故为 "cli"
+ * 历史上 demo-setup 曾把 instance 写成 "default"，导致 router 永远匹配不上、
+ * 转而新建一个 agentCount=0 的群组并把消息静默丢弃（T2 根因之一）。
+ */
+export const CLI_CHANNEL_TYPE = "cli";
+export const CLI_PLATFORM_ID = "local";
+export const CLI_INSTANCE = "cli";
+
+export interface EnsureCliWiringResult {
+  messagingGroupId: string;
+  wiringId: string | null;
+  createdMessagingGroup: boolean;
+  createdWiring: boolean;
+  repaired: string[];
+}
+
+/**
+ * 幂等地把 CLI 通道接线到指定 agent 组，让"装完就能对话"成立（T2）。
+ *
+ * 为什么需要它：`pnpm setup` / `demo-setup` 只建 agent 组时，第一条 chat 会被 router
+ * 以 "no agent wired" 丢弃；即便建了接线，`createMessagingGroup` 的
+ * `unknown_sender_policy` 默认是 **strict**，而 `cli:local` 从来不是任何组的成员，
+ * 于是 accessGate 以 "strict policy: not a member" 再次静默丢弃。两条路径都表现为
+ * "发消息没有任何回复"，且日志之外无任何用户可见反馈。
+ *
+ * 本函数一律采用 CLI 通道**自己声明的** defaults（CLI_DEFAULTS.dm）作为策略来源，
+ * 而不是硬编码 "public"：通道适配器是自身默认口径的权威，改声明即改行为。
+ *
+ * 同时修复历史遗留行（旧 demo-setup 写下的 instance="default" 或 strict 策略），
+ * 否则已经踩过坑的安装会一直坏下去。
+ */
+export function ensureCliWiring(agentGroupId: string): EnsureCliWiringResult {
+  const ctx = CLI_DEFAULTS.dm;
+  const repaired: string[] = [];
+
+  let mg = findByPlatform(CLI_CHANNEL_TYPE, CLI_PLATFORM_ID, CLI_INSTANCE);
+  let createdMessagingGroup = false;
+
+  if (!mg) {
+    // 旧 demo-setup 用 instance="default" 建过行：认领并纠正，而不是再建一个重复群组
+    const legacy = findByPlatform(CLI_CHANNEL_TYPE, CLI_PLATFORM_ID, "default");
+    if (legacy) {
+      getDb().prepare("UPDATE messaging_groups SET instance = ? WHERE id = ?").run(CLI_INSTANCE, legacy.id);
+      repaired.push(`instance default->${CLI_INSTANCE}`);
+      mg = { ...legacy, instance: CLI_INSTANCE };
+    }
+  }
+
+  if (!mg) {
+    mg = createMessagingGroup({
+      channelType: CLI_CHANNEL_TYPE,
+      platformId: CLI_PLATFORM_ID,
+      instance: CLI_INSTANCE,
+      name: "CLI local chat",
+      isGroup: false,
+      // 承重：不用 createMessagingGroup 的 strict 默认值
+      unknownSenderPolicy: ctx.unknownSenderPolicy,
+    });
+    createdMessagingGroup = true;
+  } else if (mg.unknown_sender_policy === "strict") {
+    // strict 会把 cli:local 挡在门外（它不是成员），首次安装即静默失效
+    getDb()
+      .prepare("UPDATE messaging_groups SET unknown_sender_policy = ? WHERE id = ?")
+      .run(ctx.unknownSenderPolicy, mg.id);
+    repaired.push(`unknown_sender_policy strict->${ctx.unknownSenderPolicy}`);
+    mg = { ...mg, unknown_sender_policy: ctx.unknownSenderPolicy };
+  }
+
+  // 永久静默标记会让接线看起来成功却收不到任何回复
+  if (mg.denied_at) {
+    getDb().prepare("UPDATE messaging_groups SET denied_at = NULL WHERE id = ?").run(mg.id);
+    repaired.push("cleared denied_at");
+  }
+
+  const existing = listWirings(mg.id).find((w) => w.agent_group_id === agentGroupId);
+  if (existing) {
+    return {
+      messagingGroupId: mg.id,
+      wiringId: existing.id,
+      createdMessagingGroup,
+      createdWiring: false,
+      repaired,
+    };
+  }
+
+  const wiring = createWiring({
+    messagingGroupId: mg.id,
+    agentGroupId,
+    engageMode: ctx.engageMode,
+    engagePattern: ctx.engagePattern ?? undefined,
+    sessionMode: ctx.threads ? "per-thread" : "shared",
+  });
+  return {
+    messagingGroupId: mg.id,
+    wiringId: wiring.id,
+    createdMessagingGroup,
+    createdWiring: true,
+    repaired,
+  };
+}
 
 function createCliAdapter(): ChannelAdapter {
   let server: Server | null = null;
@@ -79,7 +195,7 @@ function createCliAdapter(): ChannelAdapter {
             } catch {
               text = line; // 纯文本兜底
             }
-            config.onInbound("local", null, {
+            config.onInbound(CLI_PLATFORM_ID, null, {
               id: randomUUID(),
               kind: "chat",
               content: text,
