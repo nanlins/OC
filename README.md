@@ -3,7 +3,6 @@
 [![CI](https://github.com/nanlins/OC/actions/workflows/ci.yml/badge.svg)](https://github.com/nanlins/OC/actions/workflows/ci.yml)
 
 > 用途：OC 项目入口文档——项目简介、快速开始、配置说明、使用示例、架构说明。
-> 基线：`nanoclaw` v2（GitHub nanocoai/nanoclaw），从 0 到 1 复刻核心架构并自主扩展。
 
 ## 项目简介
 
@@ -138,8 +137,6 @@ registerTools([{
 自 2026-09-29 起已改为功能分支 + 逻辑分组提交 + squash 合并，并以 CI 门禁（测试/lint/格式/构建）作为合并前提。
 
 ## 修改记录
-
-- 2026-09-29：
   - 全仓 prettier --write 统一格式（180 个文件），恢复 CI format:check 门禁绿色
   - package.json：新增 prepare 脚本与 husky devDependency；.husky/pre-commit：提交前执行 format:check（纯 JSON 不便注释，用途在此说明）
   - vitest.config.ts：单 fork 串行化，修复并行 worker 共享测试数据目录导致的偶发崩溃
