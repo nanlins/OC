@@ -11,7 +11,7 @@
  * 修改记录：
  *   2026-08-12 创建（阶段 6）
  */
-import { getDb } from "../db/connection.js";
+import { getDb, hasTable } from "../db/connection.js";
 import { registerMigration } from "../db/migrations/index.js";
 import { randomUUID } from "node:crypto";
 import { mkdirSync, readdirSync, rmSync, writeFileSync } from "node:fs";
@@ -256,9 +256,11 @@ function safeFileName(title: string): string {
  * 把 KB 的文档物化为 markdown 文件写入 targetDir（供容器 kb_search 读取，实现宿主/容器 KB 同步）。
  * 每个文档按 chunk 顺序拼回一个 .md（分块 overlap 会带少量重复，kb_search 会重新分块，影响轻微）。
  * 先清空 targetDir 内既有 md/txt，避免已删文档残留。返回写出的文档数。
+ * 降级语义：模块迁移未应用的库上 kb_chunks 不存在 → 返回 0（不抛错，调用方按空同步处理）。
  */
 export function exportKbToDir(kb: string, targetDir: string): number {
   const db = getDb();
+  if (!hasTable("kb_chunks")) return 0;
   const rows = db
     .prepare(
       `SELECT d.id AS doc_id, d.title, d.source, c.content, c.seq
@@ -289,3 +291,9 @@ export function exportKbToDir(kb: string, targetDir: string): number {
   }
   return n;
 }
+/*
+ * 修改记录：
+ *   2026-08-12 创建（阶段 6）
+ *   2026-10-06 exportKbToDir 加 hasTable("kb_chunks") 守卫（模块迁移未应用时返回 0，
+ *              与文件头"hasTable 降级"承诺一致，消除 no such table 静默失败）
+ */

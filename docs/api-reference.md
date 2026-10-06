@@ -101,7 +101,8 @@ pnpm exec tsx scripts/delete-wiring.ts <wiring-id>
 ## 4. 测试命令
 
 ```bash
-pnpm test                    # 主机 vitest（523 通过 / 5 跳过；真实 DeepSeek E2E 需 OC_E2E=1 + 密钥）
+pnpm test                    # 主机 vitest（57 文件 / 550 通过 / 6 跳过，数字以 pnpm test 实际输出为准；
+                             #  真实 DeepSeek E2E 需 OC_E2E=1 + 密钥）
 pnpm typecheck               # 主机 tsc --noEmit
 pnpm lint                    # eslint src/ tests/
 pnpm format                  # prettier --write
@@ -109,7 +110,7 @@ pnpm format:check            # prettier --check
 pnpm coverage                # vitest --coverage（@vitest/coverage-v8）
 
 cd container/agent-runner
-bun test                     # 容器测试（38 通过 / 1 跳过）
+bun test                     # 容器测试（78 通过 / 1 跳过，以实际输出为准）
 bun run typecheck            # 容器 tsc --noEmit
 
 cd web/frontend
@@ -124,3 +125,7 @@ pnpm build                   # 编译主机 TypeScript -> dist/
 pnpm build:container         # 构建 Agent 容器 Docker 镜像
 pnpm build:web               # 构建 React 前端 -> web/frontend/dist/
 ```
+
+## 修改记录
+
+- 2026-10-06：测试命令小节用例数更新为当前真实数字（主机 57 文件/550 通过/6 跳过，容器 78 通过/1 跳过），并注明"以 pnpm test 实际输出为准"防再漂移
